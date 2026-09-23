@@ -1,0 +1,63 @@
+name: Continuous Integration & Security Audit
+
+on:
+  push:
+    branches: [ main, master, develop ]
+  pull_request:
+    branches: [ main, master ]
+
+env:
+  CARGO_TERM_COLOR: always
+  DATABASE_URL: postgresql://golde:password@localhost:5432/marketing_api?sslmode=disable
+  JWT_ACCESS_SECRET: test_jwt_access_secret_key_at_least_32_chars_long
+  JWT_REFRESH_SECRET: test_jwt_refresh_secret_key_at_least_32_chars_long
+
+jobs:
+  check-and-test:
+    name: Lint, Typecheck, and Test
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: golde
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: marketing_api
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Code Formatting Check
+        run: cargo fmt --all -- --check
+
+      - name: Static Analysis (Clippy)
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: Install SQLx CLI
+        run: cargo install sqlx-cli --no-default-features --features rustls,postgres
+
+      - name: Run Database Migrations
+        run: sqlx migrate run --source ./migrations
+
+      - name: Execute Test Suite
+        run: cargo test --all-features -- --nocapture
+
+      - name: Release Compilation Build
+        run: cargo build --release

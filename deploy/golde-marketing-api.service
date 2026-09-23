@@ -1,0 +1,28 @@
+[Unit]
+Description=GOLD-e GrowthOS Marketing API Service (Rust / Axum)
+After=network.target postgresql.service
+Requires=postgresql.service
+
+[Service]
+Type=simple
+User=golde
+Group=golde
+WorkingDirectory=/opt/golde-marketing-api
+EnvironmentFile=/opt/golde-marketing-api/.env
+ExecStart=/opt/golde-marketing-api/bin/golde-marketing-api
+Restart=always
+RestartSec=5s
+LimitNOFILE=65535
+
+# Security hardening
+ProtectSystem=full
+ProtectHome=true
+NoNewPrivileges=true
+PrivateTmp=true
+
+# Logging
+StandardOutput=append:/var/log/golde-marketing-api/output.log
+StandardError=append:/var/log/golde-marketing-api/error.log
+
+[Install]
+WantedBy=multi-user.target

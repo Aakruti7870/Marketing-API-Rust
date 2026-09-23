@@ -1,0 +1,56 @@
+name: Deploy to AWS EC2 Production
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    name: Build Binary & Deploy to EC2
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build Optimized Release Binary
+        run: cargo build --release --bin golde-marketing-api
+
+      - name: Deploy via SSH to AWS EC2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+          script: |
+            echo " Stopping running systemd service..."
+            sudo systemctl stop golde-marketing-api || true
+
+            echo "📦 Backing up old binary..."
+            sudo cp /opt/golde-marketing-api/bin/golde-marketing-api /opt/golde-marketing-api/bin/golde-marketing-api.bak || true
+
+      - name: Transfer Binary & Migrations via SCP
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+          source: "target/release/golde-marketing-api,migrations"
+          target: "/opt/golde-marketing-api/"
+
+      - name: Restart Service and Health Check
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+          script: |
+            sudo mv /opt/golde-marketing-api/target/release/golde-marketing-api /opt/golde-marketing-api/bin/golde-marketing-api
+            sudo chmod +x /opt/golde-marketing-api/bin/golde-marketing-api
+            sudo systemctl restart golde-marketing-api
+            sleep 3
+            curl -f http://localhost:4000/health || (echo "Health check failed!" && exit 1)
+            echo "🚀 Deployment succeeded!"
