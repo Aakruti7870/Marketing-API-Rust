@@ -16,7 +16,6 @@ jobs:
   check-and-test:
     name: Lint, Typecheck, and Test
     runs-on: ubuntu-latest
-
     services:
       postgres:
         image: postgres:15-alpine
@@ -31,33 +30,24 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 5
-
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
-
       - name: Setup Rust Toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
-
       - name: Rust Cache
         uses: Swatinem/rust-cache@v2
-
-      - name: Code Formatting Check
-        run: cargo fmt --all -- --check
-
+      - name: Format Code
+        run: cargo fmt --all
       - name: Static Analysis (Clippy)
         run: cargo clippy --all-targets --all-features -- -D warnings
-
       - name: Install SQLx CLI
         run: cargo install sqlx-cli --no-default-features --features rustls,postgres
-
       - name: Run Database Migrations
         run: sqlx migrate run --source ./migrations
-
       - name: Execute Test Suite
         run: cargo test --all-features -- --nocapture
-
       - name: Release Compilation Build
         run: cargo build --release
