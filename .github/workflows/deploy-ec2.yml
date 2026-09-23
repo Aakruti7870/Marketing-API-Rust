@@ -1,13 +1,30 @@
 name: Deploy to AWS EC2 Production
 
 on:
-  push:
-    branches: [ main ]
+  workflow_dispatch:
 
 jobs:
   deploy:
     name: Build Binary & Deploy to EC2
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: golde
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: marketing_api
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://golde:password@localhost:5432/marketing_api?sslmode=disable
+      JWT_ACCESS_SECRET: deployment_build_access_secret_at_least_32_chars
+      JWT_REFRESH_SECRET: deployment_build_refresh_secret_at_least_32_chars
 
     steps:
       - name: Checkout Repository
@@ -15,6 +32,12 @@ jobs:
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Install SQLx CLI
+        run: cargo install sqlx-cli --no-default-features --features rustls,postgres
+
+      - name: Run Database Migrations for SQLx Compile-Time Schema
+        run: sqlx migrate run --source ./migrations
 
       - name: Build Optimized Release Binary
         run: cargo build --release --bin golde-marketing-api
