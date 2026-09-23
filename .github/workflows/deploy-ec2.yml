@@ -9,5 +9,11 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Validate workflow
-        run: echo "DEPLOY_WORKFLOW_VALID"
+      - uses: actions/checkout@v4
+      - name: Test EC2 connection
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+          script: echo "EC2_CONNECTION_OK"
