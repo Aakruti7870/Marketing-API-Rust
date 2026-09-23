@@ -61,7 +61,7 @@ pub async fn get_run(
     workspace_id: Uuid,
     run_id: Uuid,
 ) -> Result<AgentRunWithSteps, AppError> {
-    let _run = sqlx::query_as::<_, AgentRun>(
+    let run = sqlx::query_as::<_, AgentRun>(
         "SELECT * FROM agent_runs WHERE id = $1 AND workspace_id = $2"
     )
     .bind(run_id)
@@ -91,7 +91,7 @@ pub async fn create_run(
 
     let mut tx = pool.begin().await?;
 
-    let run = sqlx::query_as::<_, AgentRun>(
+    let _run = sqlx::query_as::<_, AgentRun>(
         "INSERT INTO agent_runs (id, workspace_id, agent_type, name, status, triggered_by_id, input_params, started_at)
          VALUES ($1, $2, $3, $4, 'WAITING_APPROVAL', $5, $6, NOW())
          RETURNING *"
@@ -158,7 +158,6 @@ pub async fn approve_step(
     step_id: Uuid,
     _dto: StepApprovalDto,
 ) -> Result<AgentRunWithSteps, AppError> {
-    // 1. Verify run exists in tenant workspace
     let _run = sqlx::query_as::<_, AgentRun>(
         "SELECT * FROM agent_runs WHERE id = $1 AND workspace_id = $2"
     )
@@ -168,7 +167,6 @@ pub async fn approve_step(
     .await?
     .ok_or_else(|| AppError::NotFound("Agent run not found in workspace".to_string()))?;
 
-    // 2. Fetch and verify step
     let step = sqlx::query_as::<_, AgentStep>(
         "SELECT * FROM agent_steps WHERE id = $1 AND run_id = $2"
     )
@@ -187,7 +185,6 @@ pub async fn approve_step(
 
     let mut tx = pool.begin().await?;
 
-    // Mark current step APPROVED & COMPLETED
     sqlx::query!(
         "UPDATE agent_steps
          SET status = 'APPROVED',
@@ -203,7 +200,6 @@ pub async fn approve_step(
     .execute(&mut *tx)
     .await?;
 
-    // Advance subsequent steps: complete all remaining pending steps
     sqlx::query!(
         "UPDATE agent_steps
          SET status = 'COMPLETED',
@@ -216,7 +212,6 @@ pub async fn approve_step(
     .execute(&mut *tx)
     .await?;
 
-    // Update parent run to COMPLETED
     sqlx::query!(
         "UPDATE agent_runs
          SET status = 'COMPLETED',
@@ -230,7 +225,6 @@ pub async fn approve_step(
 
     tx.commit().await?;
 
-    // Return the updated run with steps (Command Center frontend contract requirement)
     get_run(pool, workspace_id, run_id).await
 }
 
