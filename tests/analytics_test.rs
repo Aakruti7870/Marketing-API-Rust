@@ -1,4 +1,4 @@
-use golde_marketing_api::models::{DashboardSummary, ChannelMetric};
+use golde_marketing_api::models::DashboardSummary;
 
 #[test]
 fn test_dashboard_metrics_calculation() {
