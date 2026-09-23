@@ -1,4 +1,5 @@
 use chrono::{DateTime, Utc};
+use std::fmt;
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use uuid::Uuid;
@@ -10,11 +11,11 @@ pub enum GlobalRole {
     USER,
 }
 
-impl ToString for GlobalRole {
-    fn to_string(&self) -> String {
+impl fmt::Display for GlobalRole {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            GlobalRole::SystemAdmin => "SYSTEM_ADMIN".to_string(),
-            GlobalRole::USER => "USER".to_string(),
+            GlobalRole::SystemAdmin => write!(f, "SYSTEM_ADMIN"),
+            GlobalRole::USER => write!(f, "USER"),
         }
     }
 }
