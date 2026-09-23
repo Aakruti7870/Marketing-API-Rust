@@ -1,10 +1,7 @@
 use crate::auth::jwt::{verify_token, Claims};
 use crate::error::AppError;
 use crate::state::AppState;
-use axum::{
-    extract::{FromRequestParts, State},
-    http::request::Parts,
-};
+use axum::{extract::FromRequestParts, http::request::Parts};
 
 #[derive(Clone, Debug)]
 pub struct AuthenticatedUser(pub Claims);
@@ -26,7 +23,6 @@ impl FromRequestParts<AppState> for AuthenticatedUser {
 
         let token = &auth_header["Bearer ".len()..];
         let claims = verify_token(token, &state.config.jwt_access_secret)?;
-
         Ok(AuthenticatedUser(claims))
     }
 }
