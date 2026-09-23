@@ -1,4 +1,5 @@
 use chrono::{DateTime, Utc};
+use std::fmt;
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use uuid::Uuid;
@@ -11,13 +12,13 @@ pub enum WorkspaceRole {
     VIEWER,
 }
 
-impl ToString for WorkspaceRole {
-    fn to_string(&self) -> String {
+impl fmt::Display for WorkspaceRole {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            WorkspaceRole::OWNER => "OWNER".to_string(),
-            WorkspaceRole::ADMIN => "ADMIN".to_string(),
-            WorkspaceRole::MEMBER => "MEMBER".to_string(),
-            WorkspaceRole::VIEWER => "VIEWER".to_string(),
+            WorkspaceRole::OWNER => write!(f, "OWNER"),
+            WorkspaceRole::ADMIN => write!(f, "ADMIN"),
+            WorkspaceRole::MEMBER => write!(f, "MEMBER"),
+            WorkspaceRole::VIEWER => write!(f, "VIEWER"),
         }
     }
 }
