@@ -5,14 +5,15 @@ use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum GlobalRole {
-    SYSTEM_ADMIN,
+    #[serde(rename = "SYSTEM_ADMIN")]
+    SystemAdmin,
     USER,
 }
 
 impl ToString for GlobalRole {
     fn to_string(&self) -> String {
         match self {
-            GlobalRole::SYSTEM_ADMIN => "SYSTEM_ADMIN".to_string(),
+            GlobalRole::SystemAdmin => "SYSTEM_ADMIN".to_string(),
             GlobalRole::USER => "USER".to_string(),
         }
     }
@@ -21,7 +22,7 @@ impl ToString for GlobalRole {
 impl From<&str> for GlobalRole {
     fn from(s: &str) -> Self {
         match s {
-            "SYSTEM_ADMIN" => GlobalRole::SYSTEM_ADMIN,
+            "SYSTEM_ADMIN" => GlobalRole::SystemAdmin,
             _ => GlobalRole::USER,
         }
     }
