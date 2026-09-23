@@ -44,9 +44,6 @@ jobs:
       - name: Build Optimized Release Binary
         run: cargo build --release --bin golde-marketing-api
 
-      # ============================================================
-      # EC2 BOOTSTRAP
-      # ============================================================
       - name: Bootstrap EC2 and prepare deployment
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -62,6 +59,8 @@ jobs:
               postgresql \
               postgresql-contrib \
               nginx \
+              certbot \
+              python3-certbot-nginx \
               curl \
               openssl
 
@@ -80,26 +79,20 @@ jobs:
             sudo systemctl enable --now postgresql
 
             echo "==> Creating PostgreSQL role/database if needed..."
-
             if [ ! -f /opt/golde-marketing-api/.db_password ]; then
               DB_PASSWORD="$(openssl rand -hex 32)"
 
               if sudo -u postgres psql -tAc \
                 "SELECT 1 FROM pg_roles WHERE rolname='golde'" | grep -q 1; then
-
                 sudo -u postgres psql -v ON_ERROR_STOP=1 \
                   -c "ALTER ROLE golde WITH LOGIN PASSWORD '$DB_PASSWORD';"
-
               else
-
                 sudo -u postgres psql -v ON_ERROR_STOP=1 \
                   -c "CREATE ROLE golde LOGIN PASSWORD '$DB_PASSWORD';"
-
               fi
 
               printf '%s\n' "$DB_PASSWORD" |
                 sudo tee /opt/golde-marketing-api/.db_password >/dev/null
-
               sudo chmod 600 /opt/golde-marketing-api/.db_password
               sudo chown golde:golde /opt/golde-marketing-api/.db_password
             fi
@@ -107,20 +100,14 @@ jobs:
             if ! sudo -u postgres psql -tAc \
               "SELECT 1 FROM pg_database WHERE datname='marketing_api'" |
               grep -q 1; then
-
               sudo -u postgres createdb -O golde marketing_api
-
             else
-
               sudo -u postgres psql -v ON_ERROR_STOP=1 \
                 -c "ALTER DATABASE marketing_api OWNER TO golde;"
-
             fi
 
             echo "==> Creating production environment file if absent..."
-
             if [ ! -f /opt/golde-marketing-api/.env ]; then
-
               DB_PASSWORD="$(sudo cat /opt/golde-marketing-api/.db_password)"
               JWT_ACCESS_SECRET="$(openssl rand -hex 48)"
               JWT_REFRESH_SECRET="$(openssl rand -hex 48)"
@@ -145,13 +132,9 @@ EOF
 
               sudo chmod 600 /opt/golde-marketing-api/.env
               sudo chown golde:golde /opt/golde-marketing-api/.env
-
             fi
 
-      # ============================================================
-      # PREPARE WRITABLE STAGING DIRECTORY
-      # ============================================================
-      - name: Prepare release staging directory
+      - name: Prepare writable staging directories
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.EC2_HOST }}
@@ -159,15 +142,11 @@ EOF
           key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
           script: |
             set -e
-
-            echo "==> Preparing release staging directory..."
-
             rm -rf /tmp/golde-marketing-api-release
+            rm -rf /tmp/golde-marketing-api-deploy
             mkdir -p /tmp/golde-marketing-api-release
+            mkdir -p /tmp/golde-marketing-api-deploy
 
-      # ============================================================
-      # TRANSFER RELEASE
-      # ============================================================
       - name: Transfer release binary and migrations
         uses: appleboy/scp-action@v0.1.7
         with:
@@ -177,9 +156,6 @@ EOF
           source: "target/release/golde-marketing-api,migrations"
           target: "/tmp/golde-marketing-api-release/"
 
-      # ============================================================
-      # TRANSFER SERVER CONFIGURATION
-      # ============================================================
       - name: Transfer systemd and nginx configuration
         uses: appleboy/scp-action@v0.1.7
         with:
@@ -189,10 +165,7 @@ EOF
           source: "deploy/golde-marketing-api.service,deploy/nginx.conf"
           target: "/tmp/golde-marketing-api-deploy/"
 
-      # ============================================================
-      # INSTALL + MIGRATE + RESTART + HEALTH CHECK
-      # ============================================================
-      - name: Install, migrate, restart and health check
+      - name: Install, restart, HTTPS and health check
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.EC2_HOST }}
@@ -202,7 +175,6 @@ EOF
             set -e
 
             echo "==> Installing service/configuration..."
-
             sudo cp \
               /tmp/golde-marketing-api-deploy/deploy/golde-marketing-api.service \
               /etc/systemd/system/golde-marketing-api.service
@@ -218,7 +190,6 @@ EOF
             sudo rm -f /etc/nginx/sites-enabled/default
 
             echo "==> Installing release files..."
-
             sudo rm -rf /opt/golde-marketing-api/migrations
 
             sudo mv \
@@ -229,136 +200,45 @@ EOF
               /tmp/golde-marketing-api-release/target/release/golde-marketing-api \
               /opt/golde-marketing-api/bin/golde-marketing-api
 
-            sudo chmod 755 \
-              /opt/golde-marketing-api/bin/golde-marketing-api
-
-            sudo chown golde:golde \
-              /opt/golde-marketing-api/bin/golde-marketing-api
-
-            sudo chown -R golde:golde \
-              /opt/golde-marketing-api/migrations
-
-            sudo rm -rf /tmp/golde-marketing-api-release
-
-            echo "==> Validating nginx..."
-
-            sudo nginx -t
-
-            echo "==> Enabling API service..."
-
-            sudo systemctl daemon-reload
-            sudo systemctl enable golde-marketing-api
-
-            echo "==> Restarting API..."
-
-            sudo systemctl restart golde-marketing-api
-
-            echo "==> Restarting nginx..."
-
-            sudo systemctl restart nginx
-
-            echo "==> Waiting for API..."
-
-            sleep 5
-
-            echo "==> Checking API health..."
-
-            curl -fsS http://127.0.0.1:4000/health
-
-            echo
-            echo "==> Deployment succeeded."              if sudo -u postgres psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='golde'" | grep -q 1; then
-                sudo -u postgres psql -v ON_ERROR_STOP=1 -c "ALTER ROLE golde WITH LOGIN PASSWORD '$DB_PASSWORD';"
-              else
-                sudo -u postgres psql -v ON_ERROR_STOP=1 -c "CREATE ROLE golde LOGIN PASSWORD '$DB_PASSWORD';"
-              fi
-              printf '%s\n' "$DB_PASSWORD" | sudo tee /opt/golde-marketing-api/.db_password >/dev/null
-              sudo chmod 600 /opt/golde-marketing-api/.db_password
-              sudo chown golde:golde /opt/golde-marketing-api/.db_password
-            fi
-
-            if ! sudo -u postgres psql -tAc "SELECT 1 FROM pg_database WHERE datname='marketing_api'" | grep -q 1; then
-              sudo -u postgres createdb -O golde marketing_api
-            else
-              sudo -u postgres psql -v ON_ERROR_STOP=1 -c "ALTER DATABASE marketing_api OWNER TO golde;"
-            fi
-
-            echo "==> Creating production environment file if absent..."
-            if [ ! -f /opt/golde-marketing-api/.env ]; then
-              DB_PASSWORD="$(sudo cat /opt/golde-marketing-api/.db_password)"
-              JWT_ACCESS_SECRET="$(openssl rand -hex 48)"
-              JWT_REFRESH_SECRET="$(openssl rand -hex 48)"
-              sudo tee /opt/golde-marketing-api/.env >/dev/null <<EOF
-            PORT=4000
-            HOST=0.0.0.0
-            ENVIRONMENT=production
-            DATABASE_URL=postgresql://golde:$DB_PASSWORD@localhost:5432/marketing_api?sslmode=disable
-            JWT_ACCESS_SECRET=$JWT_ACCESS_SECRET
-            JWT_REFRESH_SECRET=$JWT_REFRESH_SECRET
-            JWT_ACCESS_EXPIRATION_SECONDS=900
-            JWT_REFRESH_EXPIRATION_SECONDS=604800
-            CORS_ORIGIN=*
-            RATE_LIMIT_REQUESTS_PER_MINUTE=120
-            WHATSAPP_SIMULATION_MODE=true
-            WHATSAPP_API_VERSION=v20.0
-            WHATSAPP_WEBHOOK_VERIFY_TOKEN=$(openssl rand -hex 32)
-            RUST_LOG=info,golde_marketing_api=debug,tower_http=info
-            EOF
-              sudo chmod 600 /opt/golde-marketing-api/.env
-              sudo chown golde:golde /opt/golde-marketing-api/.env
-            fi
-
-      - name: Transfer release binary and migrations
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USERNAME }}
-          key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
-          source: "target/release/golde-marketing-api,migrations"
-          target: "/opt/golde-marketing-api/"
-
-      - name: Transfer systemd and nginx configuration
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USERNAME }}
-          key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
-          source: "deploy/golde-marketing-api.service,deploy/nginx.conf"
-          target: "/tmp/golde-marketing-api-deploy/"
-
-      - name: Install, migrate, restart and health check
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USERNAME }}
-          key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
-          script: |
-            set -e
-            echo "==> Installing service/configuration..."
-            sudo cp /tmp/golde-marketing-api-deploy/deploy/golde-marketing-api.service /etc/systemd/system/golde-marketing-api.service
-            sudo cp /tmp/golde-marketing-api-deploy/deploy/nginx.conf /etc/nginx/sites-available/golde-marketing-api
-            sudo ln -sfn /etc/nginx/sites-available/golde-marketing-api /etc/nginx/sites-enabled/golde-marketing-api
-            sudo rm -f /etc/nginx/sites-enabled/default
-
-            echo "==> Applying ownership/permissions..."
-            sudo mv /opt/golde-marketing-api/target/release/golde-marketing-api /opt/golde-marketing-api/bin/golde-marketing-api
             sudo chmod 755 /opt/golde-marketing-api/bin/golde-marketing-api
             sudo chown golde:golde /opt/golde-marketing-api/bin/golde-marketing-api
             sudo chown -R golde:golde /opt/golde-marketing-api/migrations
 
+            sudo rm -rf /tmp/golde-marketing-api-release
+            sudo rm -rf /tmp/golde-marketing-api-deploy
+
             echo "==> Validating nginx..."
             sudo nginx -t
-
-            echo "==> Running database migrations..."
-            sudo -u golde env $(sudo cat /opt/golde-marketing-api/.env | xargs) /opt/golde-marketing-api/bin/golde-marketing-api --help >/dev/null 2>&1 || true
 
             echo "==> Enabling and restarting API..."
             sudo systemctl daemon-reload
             sudo systemctl enable golde-marketing-api
             sudo systemctl restart golde-marketing-api
+
+            echo "==> Restarting nginx..."
             sudo systemctl restart nginx
 
             echo "==> Waiting for API..."
             sleep 5
+
+            echo "==> Checking API health..."
             curl -fsS http://127.0.0.1:4000/health
+            echo
+
+            echo "==> Requesting Let's Encrypt certificate..."
+            sudo certbot --nginx \
+              --non-interactive \
+              --agree-tos \
+              --register-unsafely-without-email \
+              --redirect \
+              -d api.goldetech.com
+
+            echo "==> Validating nginx after HTTPS configuration..."
+            sudo nginx -t
+            sudo systemctl reload nginx
+
+            echo "==> Checking HTTPS endpoint..."
+            curl -fsS https://api.goldetech.com/health
+            echo
 
             echo "==> Deployment succeeded."
