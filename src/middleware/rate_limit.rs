@@ -21,7 +21,7 @@ impl RateLimiter {
     pub fn check(&self, key: &str) -> bool {
         let now = Instant::now();
         let mut map = self.requests.lock().unwrap();
-        let timestamps = map.entry(key.to_string()).or_insert_with(Vec::new);
+        let timestamps = map.entry(key.to_string()).or_default();
 
         // Retain only requests in window
         let window = self.window;
