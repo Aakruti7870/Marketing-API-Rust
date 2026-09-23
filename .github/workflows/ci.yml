@@ -41,12 +41,12 @@ jobs:
         uses: Swatinem/rust-cache@v2
       - name: Format Code
         run: cargo fmt --all
-      - name: Static Analysis (Clippy)
-        run: cargo clippy --all-targets --all-features -- -D warnings
       - name: Install SQLx CLI
         run: cargo install sqlx-cli --no-default-features --features rustls,postgres
       - name: Run Database Migrations
         run: sqlx migrate run --source ./migrations
+      - name: Static Analysis (Clippy)
+        run: cargo clippy --all-targets --all-features -- -D warnings
       - name: Execute Test Suite
         run: cargo test --all-features -- --nocapture
       - name: Release Compilation Build
