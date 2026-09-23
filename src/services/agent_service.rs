@@ -61,7 +61,7 @@ pub async fn get_run(
     workspace_id: Uuid,
     run_id: Uuid,
 ) -> Result<AgentRunWithSteps, AppError> {
-    let run = sqlx::query_as::<_, AgentRun>(
+    let _run = sqlx::query_as::<_, AgentRun>(
         "SELECT * FROM agent_runs WHERE id = $1 AND workspace_id = $2"
     )
     .bind(run_id)
