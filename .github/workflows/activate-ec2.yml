@@ -1,0 +1,29 @@
+name: Activate EC2 Production
+
+on:
+  workflow_dispatch:
+
+jobs:
+  activate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Upload production installer
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+          source: "deploy/install-ec2.sh"
+          target: "/tmp/golde-marketing-api-release/"
+
+      - name: Activate production service
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+          script: |
+            chmod +x /tmp/golde-marketing-api-release/install-ec2.sh
+            /tmp/golde-marketing-api-release/install-ec2.sh
