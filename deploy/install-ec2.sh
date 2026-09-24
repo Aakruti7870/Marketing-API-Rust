@@ -14,8 +14,13 @@ if ! id golde >/dev/null 2>&1; then
 fi
 
 sudo mkdir -p "$APP_DIR/bin" "$APP_DIR/migrations" /var/log/golde-marketing-api
-sudo cp "$RELEASE_DIR/golde-marketing-api" "$APP_DIR/bin/golde-marketing-api"
-sudo cp "$RELEASE_DIR"/migrations/*.sql "$APP_DIR/migrations/"
+BINARY_PATH=$(find "$RELEASE_DIR" -type f -name golde-marketing-api -print -quit)
+if [ -z "$BINARY_PATH" ]; then
+  echo "Release binary not found under $RELEASE_DIR" >&2
+  exit 1
+fi
+sudo cp "$BINARY_PATH" "$APP_DIR/bin/golde-marketing-api"
+find "$RELEASE_DIR" -type f -name '*.sql' -exec sudo cp {} "$APP_DIR/migrations/" \;
 sudo chmod 755 "$APP_DIR/bin/golde-marketing-api"
 
 sudo systemctl enable --now postgresql
