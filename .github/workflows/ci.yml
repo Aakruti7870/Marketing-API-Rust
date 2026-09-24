@@ -2,9 +2,9 @@ name: Continuous Integration & Security Audit
 
 on:
   push:
-    branches: [ main, master, develop ]
+    branches: [ main, master, develop, ui/golde-growthos-portal ]
   pull_request:
-    branches: [ main, master ]
+    branches: [ main, master, ui/golde-growthos-portal ]
 
 env:
   CARGO_TERM_COLOR: always
