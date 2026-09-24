@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  Activity, BarChart3, Bot, ChevronDown, ChevronRight, CircleHelp,
+  Activity, BarChart3, Bot, ChevronDown, ChevronLeft, ChevronRight, CircleHelp,
   Command, ContactRound, LayoutDashboard, LogOut, Menu, MessageSquare,
   Plus, Rocket, Search, Settings, Sparkles, Target, Users, X, Zap
 } from "lucide-react";
@@ -112,7 +112,7 @@ function Dashboard({ setPage }) {
   useEffect(()=>{
     Promise.all([
       dashboardApi.get().then(r=>unwrap(r)).catch(()=>null),
-      agentsApi.runs({page:1,page_size:8}).then(r=>{
+      agentsApi.runs({page:1,limit:8}).then(r=>{
         const x=r?.data;
         return Array.isArray(x?.data)?x.data:Array.isArray(x)?x:[];
       }).catch(()=>[])
@@ -223,8 +223,8 @@ function SimplePage({ type }) {
     messages:{title:"Messages",eyebrow:"CONVERSATIONS",desc:"Monitor dispatched messages and messaging activity.",api:messagesApi.list,icon:MessageSquare,empty:"No messages yet."},
   };
   const c=configs[type];
-  useEffect(()=>{c.api({page:1,page_size:20}).then(r=>{const x=r?.data;setItems(Array.isArray(x?.data)?x.data:Array.isArray(x)?x:[])}).catch(()=>setItems([])).finally(()=>setLoading(false))},[type]);
-  return <div><PageHeader eyebrow={c.eyebrow} title={c.title} description={c.desc} action={<button className="primary-btn compact"><Plus size={16}/>Create new</button>}/><section className="panel table-panel">{loading?<div className="empty-state"><div className="spinner"/><h3>Loading workspace data</h3><p>Connecting to the Rust API…</p></div>:items.length===0?<div className="empty-state"><div className="empty-icon"><c.icon/></div><h3>{c.empty}</h3><p>This workspace is ready. Create your first {type==="agents"?"AI run":type.slice(0,-1)} to see activity here.</p><button className="primary-btn compact"><Plus size={16}/>Get started</button></div>:<div className="data-list">{items.map((item,i)=><div className="data-row" key={item.id||i}><div className="row-icon"><c.icon size={17}/></div><div><strong>{item.name||item.title||item.status||`Record ${i+1}`}</strong><small>{item.description||item.email||item.channel||item.created_at||"Workspace record"}</small></div><span className="status-pill">{item.status||"Active"}</span><ChevronRight size={16}/></div>)}</div>}</section></div>;
+  useEffect(()=>{c.api({page:1,limit:20}).then(r=>{const x=r?.data;setItems(Array.isArray(x?.data)?x.data:Array.isArray(x)?x:[])}).catch(()=>setItems([])).finally(()=>setLoading(false))},[type]);
+  return <div><PageHeader eyebrow={c.eyebrow} title={c.title} description={c.desc} action={<button className="command-btn" onClick={()=>setModal(true)}><Plus size={16}/>Create new</button>}/><section className="panel table-panel">{loading?<div className="empty-state"><div className="spinner"/><h3>Loading workspace data</h3><p>Connecting to the Rust API…</p></div>:items.length===0?<div className="empty-state"><div className="empty-icon"><c.icon/></div><h3>{c.empty}</h3><p>This workspace is ready. Create your first {type==="agents"?"AI run":type.slice(0,-1)} to see activity here.</p><button className="primary-btn compact"><Plus size={16}/>Get started</button></div>:<div className="data-list">{items.map((item,i)=><div className="data-row" key={item.id||i}><div className="row-icon"><c.icon size={17}/></div><div><strong>{item.name||item.title||item.status||`Record ${i+1}`}</strong><small>{item.description||item.email||item.channel||item.created_at||"Workspace record"}</small></div><span className="status-pill">{item.status||"Active"}</span><ChevronRight size={16}/></div>)}</div>}</section></div>;
 }
 
 function Analytics() {
