@@ -9,10 +9,10 @@ import "./App.css";
 
 const NAV = [
   { id:"dashboard", label:"Command Center", icon:LayoutDashboard },
-  { id:"agents", label:"AI Agents", icon:Bot },
-  { id:"campaigns", label:"Campaigns", icon:Target },
   { id:"contacts", label:"Contacts", icon:ContactRound },
-  { id:"messages", label:"Messages", icon:MessageSquare },
+  { id:"campaigns", label:"Campaigns", icon:Target },
+  { id:"messages", label:"WhatsApp", icon:MessageSquare },
+  { id:"agents", label:"AI Agents", icon:Bot },
   { id:"analytics", label:"Analytics", icon:BarChart3 },
   { id:"settings", label:"Settings", icon:Settings },
 ];
@@ -81,7 +81,7 @@ function Login({ onLogin }) {
 
 function Shell({ user, onLogout, page, setPage, children }) {
   const [mobileOpen, setMobileOpen] = useState(false);
-  return <div className="app-shell">
+  return <div className={`app-shell ${page==="dashboard" ? "command-shell" : ""}`}>
     <aside className={`sidebar ${mobileOpen?"open":""}`}>
       <div className="sidebar-brand"><div className="brand-symbol">G</div><div><strong>GOLD-e</strong><small>GrowthOS</small></div><button className="mobile-close" onClick={()=>setMobileOpen(false)}><X/></button></div>
       <div className="workspace-mini"><div className="workspace-icon">G</div><div><strong>Growth Workspace</strong><span>Active workspace</span></div><ChevronDown size={15}/></div>
@@ -105,24 +105,112 @@ function StatCard({ icon:Icon, label, value, change, tone="" }) {
 }
 
 function Dashboard({ setPage }) {
-  const [data,setData]=useState(null); const [loading,setLoading]=useState(true);
-  useEffect(()=>{dashboardApi.get().then(r=>setData(unwrap(r))).catch(()=>{}).finally(()=>setLoading(false))},[]);
-  const stats = data?.metrics || data?.summary || data || {};
-  const cards = [
-    [Zap,"Active campaigns",stats.active_campaigns ?? stats.activeCampaigns ?? 0,"Live","purple"],
-    [Users,"Contacts",stats.contacts ?? stats.total_contacts ?? 0,"Workspace total","blue"],
-    [MessageSquare,"Messages sent",stats.messages_sent ?? stats.sent_messages ?? 0,"Across channels","pink"],
-    [Bot,"AI runs",stats.ai_runs ?? stats.agent_runs ?? 0,"Automation activity","gold"],
-  ];
-  return <div>
-    <PageHeader eyebrow="COMMAND CENTER" title="Good morning. Your growth engine is ready." description="Monitor campaigns, AI execution, audience activity and messaging from one workspace." action={<button className="primary-btn compact" onClick={()=>setPage("agents")}><Sparkles size={16}/>Launch AI run</button>}/>
-    {loading && <div className="loading-line"><span/>Syncing live workspace data…</div>}
-    <div className="stat-grid">{cards.map(([I,l,v,c,t])=><StatCard key={l} icon={I} label={l} value={formatNumber(v)} change={c} tone={t}/>)}</div>
-    <div className="dashboard-grid">
-      <section className="panel hero-panel"><div className="panel-head"><div><span className="panel-kicker">AI OPERATIONS</span><h2>Marketing Command Center</h2></div><button className="ghost-btn" onClick={()=>setPage("analytics")}>View analytics <ChevronRight size={15}/></button></div><div className="signal"><div className="signal-ring"><div><Sparkles size={27}/><strong>AI</strong></div></div><div><h3>Orchestrate your next growth move</h3><p>Turn audience signals into campaign actions, approvals and measurable outcomes.</p><div className="signal-actions"><button onClick={()=>setPage("campaigns")}><Rocket size={16}/>Create campaign</button><button onClick={()=>setPage("agents")}><Bot size={16}/>Review AI runs</button></div></div></div></section>
-      <section className="panel"><div className="panel-head"><div><span className="panel-kicker">ACTIVITY</span><h2>Workspace pulse</h2></div><Activity size={18} className="muted-icon"/></div><div className="activity-list"><div><i className="dot purple"/><span><strong>AI automation</strong><small>Ready for your next run</small></span><time>Now</time></div><div><i className="dot pink"/><span><strong>Campaign engine</strong><small>Campaign actions available</small></span><time>Live</time></div><div><i className="dot blue"/><span><strong>Audience layer</strong><small>Contacts connected</small></span><time>Live</time></div></div></section>
-    </div>
-    <section className="quick-grid"><button onClick={()=>setPage("agents")}><div><Bot/></div><span><strong>AI Agents</strong><small>Run, approve and monitor autonomous workflows.</small></span><ChevronRight/></button><button onClick={()=>setPage("campaigns")}><div><Target/></div><span><strong>Campaigns</strong><small>Launch and control multi-channel campaigns.</small></span><ChevronRight/></button><button onClick={()=>setPage("messages")}><div><MessageSquare/></div><span><strong>Messaging</strong><small>Dispatch and track customer messages.</small></span><ChevronRight/></button></section>
+  const [data,setData]=useState(null);
+  const [runs,setRuns]=useState([]);
+  const [loading,setLoading]=useState(true);
+
+  useEffect(()=>{
+    Promise.all([
+      dashboardApi.get().then(r=>unwrap(r)).catch(()=>null),
+      agentsApi.runs({page:1,page_size:8}).then(r=>{
+        const x=r?.data;
+        return Array.isArray(x?.data)?x.data:Array.isArray(x)?x:[];
+      }).catch(()=>[])
+    ]).then(([dashboardData, agentRuns])=>{
+      setData(dashboardData);
+      setRuns(agentRuns);
+    }).finally(()=>setLoading(false));
+  },[]);
+
+  const stats = data?.summary || data?.metrics || data || {};
+  const contacts = Number(stats.total_contacts ?? stats.contacts ?? 0);
+  const campaigns = Number(stats.active_campaigns ?? stats.activeCampaigns ?? 0);
+  const sent = Number(stats.messages_sent ?? stats.sent_messages ?? 0);
+  const agentRuns = Number(stats.agent_runs_total ?? stats.ai_runs ?? stats.agent_runs ?? 0);
+  const approvals = Number(stats.pending_approvals_count ?? 0);
+
+  const feed = runs.slice(0,6).map((run,i)=>({
+    icon:["🧠","💬","📣","🤖","🛡️","📈"][i%6],
+    title:run.name || run.agent_name || run.title || `AI agent run ${i+1}`,
+    detail:run.status ? `Status: ${String(run.status).replaceAll("_"," ")}` : "Workspace automation",
+    state:String(run.status||"RUNNING").toUpperCase()
+  }));
+
+  if(!feed.length && !loading){
+    feed.push(
+      {icon:"🧠",title:"AURA 7 is ready",detail:"Create your first AI run to start activity",state:"READY"},
+      {icon:"📣",title:"Campaign engine ready",detail:"Create your first campaign",state:"READY"},
+      {icon:"👥",title:"Audience layer ready",detail:"Add contacts to activate growth signals",state:"READY"}
+    );
+  }
+
+  const now = new Date();
+  const dateLine = now.toLocaleDateString("en-US",{weekday:"long",day:"2-digit",month:"short",year:"numeric"}).toUpperCase();
+  const hour = now.getHours();
+  const greeting = hour<12 ? "morning" : hour<17 ? "afternoon" : "evening";
+  const savedUser = (()=>{ try { return JSON.parse(localStorage.getItem("golde_user")||"{}"); } catch { return {}; } })();
+
+  return <div className="command-center">
+    <section className="command-welcome">
+      <div className="command-aura"/>
+      <div className="command-orbit orbit-a"/>
+      <div className="command-orbit orbit-b"/>
+      <div className="command-floor"><span/><i/><b/></div>
+      <div className="command-welcome-content">
+        <div>
+          <div className="command-date">{dateLine}</div>
+          <h1>Good {greeting}, {savedUser?.first_name || "there"} 👋</h1>
+          <p>AURA 7 is connected to your workspace. Turn audience signals into campaigns, approvals and measurable growth actions.</p>
+          <div className="command-actions">
+            <button className="command-btn" onClick={()=>setPage("agents")}><Zap size={16}/>Run Growth Plan</button>
+            <button className="command-btn ghost" onClick={()=>setPage("agents")}>Review approvals{approvals ? ` (${approvals})` : ""}</button>
+          </div>
+        </div>
+        <div className="growth-score">
+          <svg width="92" height="92" viewBox="0 0 92 92">
+            <circle cx="46" cy="46" r="37" fill="none" stroke="rgba(255,255,255,.10)" strokeWidth="7"/>
+            <circle cx="46" cy="46" r="37" fill="none" stroke="#ff9a3d" strokeWidth="7" strokeLinecap="round" strokeDasharray="233" strokeDashoffset="65"/>
+          </svg>
+          <strong>72</strong><span>GROWTH SCORE</span>
+        </div>
+      </div>
+    </section>
+
+    <section className="command-kpis">
+      <div><span>CONTACTS · WORKSPACE</span><strong>{formatNumber(contacts)}</strong><small>Audience layer</small></div>
+      <div><span>ACTIVE CAMPAIGNS</span><strong>{formatNumber(campaigns)}</strong><small>Campaign engine</small></div>
+      <div><span>WHATSAPP · 30D</span><strong>{formatNumber(sent)}</strong><small>Messages sent</small></div>
+      <div><span>AGENT RUNS</span><strong>{formatNumber(agentRuns)}</strong><small>{approvals ? `${approvals} awaiting approval` : "Automation activity"}</small></div>
+    </section>
+
+    <section className="command-columns">
+      <div className="command-card">
+        <h3><span className="live-dot"/>LIVE AGENT ACTIVITY</h3>
+        <div className="command-feed">
+          {loading ? <div className="command-empty">Syncing workspace activity…</div> : feed.map((item,i)=>
+            <div className="command-feed-item" key={i}>
+              <div className="feed-icon">{item.icon}</div>
+              <div><b>{item.title}</b><span>{item.detail}</span></div>
+              <em className={item.state==="READY"?"ready":""}>{item.state==="RUNNING"?"RUNNING":item.state==="READY"?"READY":"DONE"}</em>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="command-card">
+        <h3>🛡️ APPROVAL QUEUE</h3>
+        <div className="approval-list">
+          {approvals > 0 ? <div className="approval-item"><b>{approvals} approval{approvals===1?"":"s"} awaiting review</b><span>Open AI Agents to review pending actions.</span><button onClick={()=>setPage("agents")}>Review</button></div> :
+          <div className="approval-item"><b>No approvals waiting.</b><span>Your workspace is clear for the next growth action.</span><button onClick={()=>setPage("agents")}>Open Agents</button></div>}
+        </div>
+        <div className="command-check">
+          <div className="done">Rust API connected</div>
+          <div className="done">Workspace authenticated</div>
+          <div className="done">Analytics connected</div>
+          <div className={sent>0?"done":""}>{sent>0 ? "WhatsApp activity detected" : "WhatsApp activity pending"}</div>
+        </div>
+      </div>
+    </section>
   </div>;
 }
 
