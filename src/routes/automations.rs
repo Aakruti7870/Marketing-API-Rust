@@ -15,6 +15,7 @@ pub fn routes(state: AppState)->Router{
       .route("/:id/pause",post(pause))
       .route("/:id/run",post(run))
       .route("/:id/runs",get(runs))
+      .route("/:id/runs/:run_id/steps",get(run_steps))
       .with_state(state)
 }
 
@@ -43,6 +44,9 @@ async fn pause(State(state):State<AppState>,tenant:TenantContext,Path(id):Path<U
 async fn run(State(state):State<AppState>,tenant:TenantContext,Path(id):Path<Uuid>,Json(dto):Json<RunAutomationDto>)->Result<Json<serde_json::Value>,AppError>{
     require_workspace_roles(&tenant.workspace_role,&["OWNER","ADMIN","MEMBER"])?;
     Ok(Json(json!({"data":automation_service::run(&state.pool,&state.http_client,tenant.workspace_id,id,dto.payload.unwrap_or_else(||json!({}))).await?,"message":"Automation executed"})))
+}
+async fn run_steps(State(state):State<AppState>,tenant:TenantContext,Path((id,run_id)):Path<(Uuid,Uuid)>)->Result<Json<serde_json::Value>,AppError>{
+    Ok(Json(json!({"data":automation_service::run_steps(&state.pool,tenant.workspace_id,id,run_id).await?,"message":"Automation run steps retrieved"})))
 }
 async fn runs(State(state):State<AppState>,tenant:TenantContext,Path(id):Path<Uuid>)->Result<Json<serde_json::Value>,AppError>{
     Ok(Json(json!({"data":automation_service::runs(&state.pool,tenant.workspace_id,id).await?,"message":"Automation runs retrieved"})))
