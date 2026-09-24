@@ -59,3 +59,15 @@ export const messagesApi = {
 };
 
 export default api;
+
+
+export const automationsApi = {
+  list: () => api.get("/automations"),
+  get: (id) => api.get(`/automations/${id}`),
+  create: (payload) => api.post("/automations", payload),
+  update: (id, payload) => api.put(`/automations/${id}`, payload),
+  activate: (id) => api.post(`/automations/${id}/activate`),
+  pause: (id) => api.post(`/automations/${id}/pause`),
+  run: (id, payload = {}) => api.post(`/automations/${id}/run`, payload),
+  runs: (id) => api.get(`/automations/${id}/runs`),
+};
