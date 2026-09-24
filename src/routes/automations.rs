@@ -3,7 +3,7 @@ use crate::middleware::{require_workspace_roles, TenantContext};
 use crate::models::{CreateAutomationDto, RunAutomationDto, UpdateAutomationDto};
 use crate::services::automation_service;
 use crate::state::AppState;
-use axum::{extract::{Path, State}, routing::{get,post,put}, Json, Router};
+use axum::{extract::{Path, State}, routing::{get,post}, Json, Router};
 use serde_json::json;
 use uuid::Uuid;
 
