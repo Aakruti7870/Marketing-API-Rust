@@ -214,19 +214,54 @@ function Dashboard({ setPage }) {
   </div>;
 }
 
+function CreateModal({type,onClose,onDone}) {
+  const [busy,setBusy]=useState(false),[error,setError]=useState("");
+  const [form,setForm]=useState(type==="contacts"?{first_name:"",last_name:"",phone:"",email:"",company:""}:type==="campaigns"?{name:"",description:"",channel:"whatsapp"}:type==="agents"?{agent_type:"growth",name:"Growth Plan",input_params:"{}"}:{contact_id:"",content:""});
+  const submit=async e=>{e.preventDefault();setBusy(true);setError("");try{
+    let r;
+    if(type==="contacts") r=await contactsApi.create({...form,tags:[],status:"lead"});
+    else if(type==="campaigns") r=await campaignsApi.create({...form,target_tags:[]});
+    else if(type==="agents") r=await agentsApi.create({...form,input_params:JSON.parse(form.input_params||"{}")});
+    else r=await messagesApi.send(form);
+    onDone(unwrap(r)||{}); onClose();
+  }catch(err){setError(err?.response?.data?.error?.message||err?.response?.data?.message||err?.message||"Action failed.")}finally{setBusy(false)}};
+  return <Modal title={type==="contacts"?"Add contact":type==="campaigns"?"Create campaign":type==="agents"?"Run AI agent":"Send WhatsApp message"} onClose={onClose}>
+    {error&&<div className="alert error">{error}</div>}
+    <form className="modal-form" onSubmit={submit}>
+      {type==="contacts"&&<><label>First name<input required value={form.first_name} onChange={e=>setForm({...form,first_name:e.target.value})}/></label><label>Last name<input value={form.last_name} onChange={e=>setForm({...form,last_name:e.target.value})}/></label><label>Phone<input required value={form.phone} onChange={e=>setForm({...form,phone:e.target.value})}/></label><label>Email<input type="email" value={form.email} onChange={e=>setForm({...form,email:e.target.value})}/></label><label>Company<input value={form.company} onChange={e=>setForm({...form,company:e.target.value})}/></label></>}
+      {type==="campaigns"&&<><label>Campaign name<input required value={form.name} onChange={e=>setForm({...form,name:e.target.value})}/></label><label>Description<textarea value={form.description} onChange={e=>setForm({...form,description:e.target.value})}/></label><label>Channel<select value={form.channel} onChange={e=>setForm({...form,channel:e.target.value})}><option value="whatsapp">WhatsApp</option><option value="email">Email</option></select></label></>}
+      {type==="agents"&&<><label>Agent type<input required value={form.agent_type} onChange={e=>setForm({...form,agent_type:e.target.value})}/></label><label>Run name<input required value={form.name} onChange={e=>setForm({...form,name:e.target.value})}/></label><label>Input JSON<textarea value={form.input_params} onChange={e=>setForm({...form,input_params:e.target.value})}/></label></>}
+      {type==="messages"&&<><label>Contact ID<input required value={form.contact_id} onChange={e=>setForm({...form,contact_id:e.target.value})}/></label><label>Message<textarea required value={form.content} onChange={e=>setForm({...form,content:e.target.value})}/></label></>}
+      <div className="modal-actions"><button type="button" className="command-btn ghost" onClick={onClose}>Cancel</button><button className="command-btn" disabled={busy}>{busy?"Working…":"Execute"}<ArrowRight size={15}/></button></div>
+    </form>
+  </Modal>;
+}
+
 function SimplePage({ type }) {
-  const [items,setItems]=useState([]); const [loading,setLoading]=useState(true);
+  const [items,setItems]=useState([]),[loading,setLoading]=useState(true),[modal,setModal]=useState(false),[notice,setNotice]=useState("");
   const configs={
     agents:{title:"AI Agents",eyebrow:"AUTOMATION",desc:"Run AI workflows and review human approval checkpoints.",api:agentsApi.runs,icon:Bot,empty:"No agent runs yet."},
     campaigns:{title:"Campaigns",eyebrow:"ORCHESTRATION",desc:"Create, launch and monitor your marketing campaigns.",api:campaignsApi.list,icon:Target,empty:"No campaigns yet."},
-    contacts:{title:"Contacts",eyebrow:"AUDIENCE",desc:"Manage the workspace audience powering your growth engine.",api:contactsApi.list,icon:Users,empty:"No contacts yet."},
-    messages:{title:"Messages",eyebrow:"CONVERSATIONS",desc:"Monitor dispatched messages and messaging activity.",api:messagesApi.list,icon:MessageSquare,empty:"No messages yet."},
+    contacts:{title:"Contacts",eyebrow:"AUDIENCE",desc:"Manage the audience powering your growth engine.",api:contactsApi.list,icon:Users,empty:"No contacts yet."},
+    messages:{title:"WhatsApp",eyebrow:"CONVERSATIONS",desc:"Dispatch and monitor WhatsApp messaging activity.",api:messagesApi.list,icon:MessageSquare,empty:"No messages yet."}
   };
   const c=configs[type];
-  useEffect(()=>{c.api({page:1,limit:20}).then(r=>{const x=r?.data;setItems(Array.isArray(x?.data)?x.data:Array.isArray(x)?x:[])}).catch(()=>setItems([])).finally(()=>setLoading(false))},[type]);
-  return <div><PageHeader eyebrow={c.eyebrow} title={c.title} description={c.desc} action={<button className="command-btn" onClick={()=>setModal(true)}><Plus size={16}/>Create new</button>}/><section className="panel table-panel">{loading?<div className="empty-state"><div className="spinner"/><h3>Loading workspace data</h3><p>Connecting to the Rust API…</p></div>:items.length===0?<div className="empty-state"><div className="empty-icon"><c.icon/></div><h3>{c.empty}</h3><p>This workspace is ready. Create your first {type==="agents"?"AI run":type.slice(0,-1)} to see activity here.</p><button className="primary-btn compact"><Plus size={16}/>Get started</button></div>:<div className="data-list">{items.map((item,i)=><div className="data-row" key={item.id||i}><div className="row-icon"><c.icon size={17}/></div><div><strong>{item.name||item.title||item.status||`Record ${i+1}`}</strong><small>{item.description||item.email||item.channel||item.created_at||"Workspace record"}</small></div><span className="status-pill">{item.status||"Active"}</span><ChevronRight size={16}/></div>)}</div>}</section></div>;
+  const load=()=>{setLoading(true);c.api({page:1,limit:20}).then(unwrap).then(x=>setItems(Array.isArray(x?.data)?x.data:Array.isArray(x)?x:[])).catch(()=>setItems([])).finally(()=>setLoading(false))};
+  useEffect(()=>{load()},[type]);
+  const action=async(fn,msg)=>{try{await fn();setNotice(msg);load();setTimeout(()=>setNotice(""),3000)}catch(err){setNotice(err?.response?.data?.error?.message||err?.message||"Action failed.")}};
+  return <div>
+    <PageHeader eyebrow={c.eyebrow} title={c.title} description={c.desc} action={<button className="command-btn" onClick={()=>setModal(true)}><Plus size={16}/>Create new</button>}/>
+    {notice&&<div className="action-notice"><Check size={15}/>{notice}</div>}
+    <section className="panel table-panel">
+      {loading?<div className="empty-state"><div className="spinner"/><h3>Loading workspace data</h3><p>Connecting to the Rust API…</p></div>
+      :items.length===0?<div className="empty-state"><div className="empty-icon"><c.icon/></div><h3>{c.empty}</h3><p>This workspace is ready. Create the first {type==="agents"?"AI run":type==="messages"?"WhatsApp message":type.slice(0,-1)}.</p><button className="command-btn" onClick={()=>setModal(true)}><Plus size={16}/>Get started</button></div>
+      :<div className="data-list">{items.map((item,i)=><div className="data-row" key={item.id||i}><div className="row-icon"><c.icon size={17}/></div><div><strong>{item.name||item.title||item.status||`Record ${i+1}`}</strong><small>{item.description||item.email||item.phone||item.content||item.channel||item.created_at||"Workspace record"}</small></div><span className="status-pill">{item.status||"Active"}</span>
+        {type==="campaigns"&&item.id&&(String(item.status).toLowerCase()==="active"?<button className="row-action" onClick={()=>action(()=>campaignsApi.pause(item.id),"Campaign paused")}><Pause size={13}/></button>:<button className="row-action" onClick={()=>action(()=>campaignsApi.launch(item.id),"Campaign launch requested")}><Play size={13}/></button>)}
+        <ChevronRight size={16}/></div>)}</div>}
+    </section>
+    {modal&&<CreateModal type={type} onClose={()=>setModal(false)} onDone={()=>{setNotice("Action completed successfully.");load();setTimeout(()=>setNotice(""),3000)}}/>}
+  </div>;
 }
-
 function Analytics() {
   const [data,setData]=useState(null);
   useEffect(()=>{dashboardApi.get().then(r=>setData(unwrap(r))).catch(()=>{})},[]);
