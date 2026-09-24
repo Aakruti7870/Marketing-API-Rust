@@ -1,3 +1,4 @@
+#![allow(clippy::needless_question_mark, clippy::redundant_closure)]
 use crate::error::AppError;
 use crate::models::{Automation, AutomationGraph, AutomationNode, AutomationRun, CreateAutomationDto, UpdateAutomationDto};
 use reqwest::{Client, Method, Url};
