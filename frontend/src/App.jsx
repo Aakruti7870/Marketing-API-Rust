@@ -17,7 +17,12 @@ const NAV = [
   { id:"settings", label:"Settings", icon:Settings },
 ];
 
-function initials(user) {
+
+const AI_HEROES = [
+  {title:"AURA 7 · COMMAND INTELLIGENCE",copy:"Turn audience signals into coordinated growth actions.",image:"https://dnznrvs05pmza.cloudfront.net/gemini/gemini-3-pro-image/images/ccca5a9a-0c41-444d-b31d-c7464a7e8e57/6f9db864-db66-4e64-87ea-307b13821889/AURA_7_futuristic_AI_marketing_command_center__elegant_human.png?_jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJrZXlIYXNoIjoiMzRkYmFjYzYzY2Y1OWQ2ZSIsImJ1Y2tldCI6InJ1bndheS10YXNrLWFydGlmYWN0cyIsInN0YWdlIjoicHJvZCIsImV4cCI6MTc5MDM4MzA0Nn0.zDLUeI-IaO8CXT1Bl0iSQG4hXgW00MRUfCeN7n4IG4w"},
+  {title:"GROWTHOS · SIGNAL ENGINE",copy:"See campaigns, conversations and agent activity in one operating layer.",image:"https://dnznrvs05pmza.cloudfront.net/gemini/gemini-3-pro-image/images/1a586ab8-8555-4955-a1c2-cf314068b8be/bec74049-4ce8-4f76-8da4-bc085c61fb12/GOLD_e_GrowthOS_futuristic_marketing_operations_room__lumino.png?_jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJrZXlIYXNoIjoiYjJkZTVlYmE4YTE2NDhkZSIsImJ1Y2tldCI6InJ1bndheS10YXNrLWFydGlmYWN0cyIsInN0YWdlIjoicHJvZCIsImV4cCI6MTc5MDQ1MzY5MH0.j5x42FUqI2_OS48q24YDQsBodz_Wgcrm2UFvYGengPg"},
+  {title:"AURA 7 · GROWTH STRATEGIST",copy:"Automate the next best action while keeping approvals under human control.",image:"https://dnznrvs05pmza.cloudfront.net/gemini/gemini-3-pro-image/images/f14ba74d-6f2e-47dd-aa0f-e82fe737cb2a/fa7a8f89-1711-4daa-8c79-62c7e0ffbfdc/AURA_7_AI_growth_strategist_in_a_premium_dark_digital_studio.png?_jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJrZXlIYXNoIjoiZDI5ZjVjNjIxYjM5ZTZiNSIsImJ1Y2tldCI6InJ1bndheS10YXNrLWFydGlmYWN0cyIsInN0YWdlIjoicHJvZCIsImV4cCI6MTc5MDQ1MjgzNH0.wC3wF7AMLipPtBfdB8LkZRe5E3HosI0fpq28XFDk-zE"}
+];function initials(user) {
   return [user?.first_name, user?.last_name].filter(Boolean).map(x => x[0]).join("").toUpperCase() || "GE";
 }
 
@@ -102,6 +107,18 @@ function PageHeader({ eyebrow, title, description, action }) {
 
 function StatCard({ icon:Icon, label, value, change, tone="" }) {
   return <div className="stat-card"><div className={`stat-icon ${tone}`}><Icon size={19}/></div><div className="stat-copy"><span>{label}</span><strong>{value}</strong><small className={change?.startsWith("-")?"negative":""}>{change || "Live workspace metric"}</small></div></div>;
+}
+
+function HeroCarousel({setPage}) {
+  const [index,setIndex]=useState(0);
+  useEffect(()=>{const timer=setInterval(()=>setIndex(i=>(i+1)%AI_HEROES.length),7000);return()=>clearInterval(timer)},[]);
+  const slide=AI_HEROES[index];
+  return <section className="hero-carousel">
+    <img src={slide.image} alt="" className="hero-image"/>
+    <div className="hero-vignette"/>
+    <div className="hero-content"><span className="hero-kicker">{slide.title}</span><h2>Growth intelligence,<br/><strong>in motion.</strong></h2><p>{slide.copy}</p><div className="hero-actions"><button className="command-btn" onClick={()=>setPage("agents")}><Zap size={16}/>Run Growth Plan</button><button className="command-btn ghost" onClick={()=>setPage("campaigns")}>Open Campaigns <ArrowRight size={15}/></button></div></div>
+    <div className="carousel-controls"><button onClick={()=>setIndex((index-1+AI_HEROES.length)%AI_HEROES.length)} aria-label="Previous"><ChevronLeft size={17}/></button><div>{AI_HEROES.map((_,i)=><button key={i} className={i===index?"active":""} onClick={()=>setIndex(i)} aria-label={`Slide ${i+1}`}/>)}</div><button onClick={()=>setIndex((index+1)%AI_HEROES.length)} aria-label="Next"><ChevronRight size={17}/></button></div>
+  </section>;
 }
 
 function Dashboard({ setPage }) {
