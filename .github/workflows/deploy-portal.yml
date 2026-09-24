@@ -52,13 +52,20 @@ jobs:
             sudo rm -rf /opt/golde-portal/*
 
             sudo cp -r /tmp/golde-portal-release/frontend/dist/. /opt/golde-portal/
-
             sudo chown -R www-data:www-data /opt/golde-portal
+
+            PORTAL_NGINX="/etc/nginx/sites-available/golde-portal"
+
+            if [ ! -f "$PORTAL_NGINX" ]; then
+              echo "Portal Nginx configuration not found: $PORTAL_NGINX" >&2
+              exit 1
+            fi
+
+            sudo sed -i 's#proxy_pass http://127\.0\.0\.1:4000/api/v1/;#proxy_pass http://127.0.0.1:4000;#' "$PORTAL_NGINX"
 
             sudo nginx -t
             sudo systemctl reload nginx
 
-            curl -fsS -H 'Host: goldetech.com' \
-              http://127.0.0.1/ >/dev/null
+            curl -fsS -H 'Host: goldetech.com'               http://127.0.0.1/ >/dev/null
 
             echo "GOLD_E_GROWTHOS_PORTAL_DEPLOY_OK"
