@@ -12,7 +12,8 @@ const NAV = [
   { id:"contacts", label:"Contacts", icon:ContactRound },
   { id:"campaigns", label:"Campaigns", icon:Target },
   { id:"messages", label:"WhatsApp", icon:MessageSquare },
-  { id:"agents", label:"AI Agents", icon:Bot },\n  { id:"automations", label:"Automations", icon:Zap },
+  { id:"agents", label:"AI Agents", icon:Bot },
+  { id:"automations", label:"Automations", icon:Zap },
   { id:"analytics", label:"Analytics", icon:BarChart3 },
   { id:"settings", label:"Settings", icon:Settings },
 ];
