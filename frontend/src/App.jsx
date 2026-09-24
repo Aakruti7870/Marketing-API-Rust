@@ -81,7 +81,7 @@ function Login({ onLogin }) {
 
 function Shell({ user, onLogout, page, setPage, children }) {
   const [mobileOpen, setMobileOpen] = useState(false);
-  return <div className={`app-shell ${page==="dashboard" ? "command-shell" : ""}`}>
+  return <div className="app-shell command-shell">
     <aside className={`sidebar ${mobileOpen?"open":""}`}>
       <div className="sidebar-brand"><div className="brand-symbol">G</div><div><strong>GOLD-e</strong><small>GrowthOS</small></div><button className="mobile-close" onClick={()=>setMobileOpen(false)}><X/></button></div>
       <div className="workspace-mini"><div className="workspace-icon">G</div><div><strong>Growth Workspace</strong><span>Active workspace</span></div><ChevronDown size={15}/></div>
