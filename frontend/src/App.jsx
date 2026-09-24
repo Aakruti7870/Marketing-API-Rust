@@ -295,52 +295,105 @@ function SimplePage({ type }) {
   </div>;
 }
 function AutomationBuilder({ automation, onBack, onSaved }) {
-  const [name,setName]=useState(automation?.name||"New Growth Automation");
-  const [nodes,setNodes]=useState(automation?.graph?.nodes||[
+  const initialNodes=automation?.graph?.nodes||[
     {id:"trigger",name:"Webhook Trigger",type:"trigger.webhook",config:{},position:[80,180]},
-    {id:"http",name:"HTTP Request",type:"action.http",config:{method:"POST",url:"https://example.com/webhook"},position:[360,180]},
+    {id:"http",name:"HTTP Request",type:"http.request",config:{method:"POST",url:"https://example.com/webhook"},position:[360,180]},
     {id:"set",name:"Set Data",type:"data.set",config:{data:{status:"processed"}},position:[640,180]}
-  ]);
+  ];
+  const [name,setName]=useState(automation?.name||"New Growth Automation");
+  const [nodes,setNodes]=useState(initialNodes);
+  const [edges,setEdges]=useState(automation?.graph?.edges||[{source:"trigger",target:"http"},{source:"http",target:"set"}]);
+  const [selected,setSelected]=useState(initialNodes[0]?.id||null);
+  const [edgeSource,setEdgeSource]=useState("");
+  const [edgeTarget,setEdgeTarget]=useState("");
   const [busy,setBusy]=useState(false),[notice,setNotice]=useState("");
-  const edges=[{source:"trigger",target:"http"},{source:"http",target:"set"}];
+
+  const selectedNode=nodes.find(n=>n.id===selected);
+  const updateNode=(patch)=>setNodes(xs=>xs.map(n=>n.id===selected?{...n,...patch}:n));
+  const updateConfig=(key,value)=>updateNode({config:{...(selectedNode?.config||{}),[key]:value}});
+  const addNode=(type,label)=>{
+    const id=`node-${Date.now()}`;
+    const config=type==="http.request"?{method:"GET",url:"https://example.com"}:
+      type==="logic.condition"?{path:"status",equals:"ready"}:
+      type==="logic.switch"?{path:"status",rules:[{equals:"ready",branch:"true"}],default_branch:"default"}:
+      type==="delay.wait"?{milliseconds:1000}:
+      type==="ai.agent"?{provider:"openai-compatible",endpoint:"https://api.example.com/v1/chat/completions",model:"default",prompt:"Analyze this input and return structured JSON.",api_key_env:"AI_API_KEY"}:
+      type==="trigger.schedule"?{interval_seconds:3600}:
+      type==="data.set"?{data:{}}:{};
+    setNodes(xs=>[...xs,{id,name:label,type,config,position:[80+xs.length*280,180]}]);
+    setSelected(id);
+  };
+  const removeNode=()=>{
+    if(!selected)return;
+    setNodes(xs=>xs.filter(n=>n.id!==selected));
+    setEdges(xs=>xs.filter(e=>e.source!==selected&&e.target!==selected));
+    setSelected(null);
+  };
+  const connect=()=>{
+    if(!edgeSource||!edgeTarget||edgeSource===edgeTarget)return;
+    if(edges.some(e=>e.source===edgeSource&&e.target===edgeTarget))return;
+    setEdges(xs=>[...xs,{source:edgeSource,target:edgeTarget}]);
+    setEdgeSource("");setEdgeTarget("");
+  };
   const save=async(publish=false)=>{
     setBusy(true);setNotice("");
     try{
-      const graph={nodes,edges};
-      const payload={name,description:"GOLD-e visual automation workflow",trigger_type:nodes[0]?.type==="trigger.schedule"?"SCHEDULE":nodes[0]?.type==="trigger.webhook"?"WEBHOOK":"MANUAL",trigger_config:{},graph};
+      const first=nodes[0];
+      const triggerType=first?.type==="trigger.schedule"?"SCHEDULE":first?.type==="trigger.webhook"?"WEBHOOK":"MANUAL";
+      const triggerConfig=triggerType==="SCHEDULE"?(first?.config||{}):{};
+      const payload={name,description:"GOLD-e native automation workflow",trigger_type:triggerType,trigger_config:triggerConfig,graph:{nodes,edges}};
       const res=automation?.id?await automationsApi.update(automation.id,payload):await automationsApi.create(payload);
       const saved=unwrap(res);
-      if(publish) await automationsApi.activate(saved.id);
+      if(publish)await automationsApi.activate(saved.id);
       setNotice(publish?"Automation published and active.":"Automation saved as draft.");
       onSaved();
     }catch(e){setNotice(e?.response?.data?.error?.message||e?.response?.data?.message||e?.message||"Unable to save automation.");}
     finally{setBusy(false)}
   };
-  const addNode=(type,name)=>{
-    const id=`node-${Date.now()}`;
-    const config=type==="action.http"?{method:"GET",url:"https://api.example.com"}:type==="logic.condition"?{path:"status",equals:"ready"}:type==="delay.wait"?{milliseconds:1000}:type==="ai.agent"?{agent_type:"growth"}:{data:{}};
-    setNodes([...nodes,{id,name,type,config,position:[80+nodes.length*280,360]}]);
-  };
+  const library=[
+    ["trigger.manual","Manual Trigger"],["trigger.webhook","Webhook Trigger"],["trigger.schedule","Schedule Trigger"],
+    ["http.request","HTTP Request"],["logic.condition","IF / Condition"],["logic.switch","Switch"],["logic.filter","Filter"],
+    ["transform.merge","Merge"],["transform.split","Split Items"],["transform.aggregate","Aggregate"],
+    ["delay.wait","Wait / Delay"],["data.set","Set Data"],["ai.agent","AI Agent"],["data.noop","No-op"]
+  ];
   return <div>
-    <PageHeader eyebrow="AUTOMATION BUILDER" title={name} description="Compose triggers, logic, AI and actions into a reusable workflow." action={<div className="builder-actions"><button className="ghost-btn" onClick={onBack}>Back</button><button className="command-btn ghost" disabled={busy} onClick={()=>save(false)}>Save draft</button><button className="command-btn" disabled={busy} onClick={()=>save(true)}><Rocket size={15}/>Publish</button></div>}/>
+    <PageHeader eyebrow="AUTOMATION BUILDER" title={name} description="Design, connect, test and publish a native GOLD-e workflow." action={<div className="builder-actions"><button className="ghost-btn" onClick={onBack}>Back</button><button className="command-btn ghost" disabled={busy} onClick={()=>save(false)}>Save draft</button><button className="command-btn" disabled={busy} onClick={()=>save(true)}><Rocket size={15}/>Publish</button></div>}/>
     {notice&&<div className="action-notice"><Check size={15}/>{notice}</div>}
     <section className="builder-layout">
-      <aside className="panel node-library"><div className="panel-head"><div><span className="panel-kicker">NODE LIBRARY</span><h2>Build blocks</h2></div></div>
+      <aside className="panel node-library">
+        <div className="panel-head"><div><span className="panel-kicker">NODE LIBRARY</span><h2>Build blocks</h2></div></div>
         <input value={name} onChange={e=>setName(e.target.value)} placeholder="Automation name"/>
-        <button onClick={()=>addNode("trigger.manual","Manual Trigger")}><Zap size={15}/>Manual Trigger</button>
-        <button onClick={()=>addNode("trigger.webhook","Webhook Trigger")}><Zap size={15}/>Webhook Trigger</button>
-        <button onClick={()=>addNode("trigger.schedule","Schedule Trigger")}><Zap size={15}/>Schedule Trigger</button>
-        <button onClick={()=>addNode("action.http","HTTP Request")}><ArrowRight size={15}/>HTTP Request</button>
-        <button onClick={()=>addNode("logic.condition","IF / Condition")}><Target size={15}/>IF / Condition</button>
-        <button onClick={()=>addNode("delay.wait","Wait / Delay")}><Pause size={15}/>Wait / Delay</button>
-        <button onClick={()=>addNode("ai.agent","AI Agent")}><Bot size={15}/>AI Agent</button>
-        <button onClick={()=>addNode("data.set","Set Data")}><Settings size={15}/>Set Data</button>
+        {library.map(([type,label])=><button key={type} onClick={()=>addNode(type,label)}><Zap size={15}/>{label}</button>)}
       </aside>
       <section className="panel workflow-canvas">
-        <div className="canvas-toolbar"><span>WORKFLOW · {nodes.length} NODES</span><span>Draft graph</span></div>
-        <div className="canvas-grid">{nodes.map((n,i)=><div className="workflow-node" key={n.id}><div className="node-index">{i+1}</div><div><strong>{n.name}</strong><small>{n.type.replaceAll("."," · ").toUpperCase()}</small></div>{i<nodes.length-1&&<div className="node-link"/>}</div>)}</div>
-        <div className="canvas-help">Connectors are stored as workflow edges. The execution engine supports Webhook/Manual triggers, HTTP requests, conditions, delays and data transforms now; AI nodes are reserved for the agent runtime integration.</div>
+        <div className="canvas-toolbar"><span>WORKFLOW · {nodes.length} NODES · {edges.length} CONNECTIONS</span><span>Drag a node onto another to connect</span></div>
+        <div className="canvas-grid">
+          {nodes.map((n,i)=><div className={`workflow-node ${selected===n.id?"selected":""}`} key={n.id}
+            draggable onDragStart={e=>e.dataTransfer.setData("text/plain",n.id)}
+            onDragOver={e=>e.preventDefault()} onDrop={e=>{e.preventDefault();const source=e.dataTransfer.getData("text/plain");if(source&&source!==n.id&&!edges.some(x=>x.source===source&&x.target===n.id))setEdges(xs=>[...xs,{source,target:n.id}])}}
+            onClick={()=>setSelected(n.id)}>
+            <div className="node-index">{i+1}</div><div><strong>{n.name}</strong><small>{n.type.replaceAll("."," · ").toUpperCase()}</small></div>
+          </div>)}
+        </div>
+        <div className="canvas-help">
+          <div className="builder-connect"><select value={edgeSource} onChange={e=>setEdgeSource(e.target.value)}><option value="">From node…</option>{nodes.map(n=><option key={n.id} value={n.id}>{n.name}</option>)}</select><ArrowRight size={14}/><select value={edgeTarget} onChange={e=>setEdgeTarget(e.target.value)}><option value="">To node…</option>{nodes.map(n=><option key={n.id} value={n.id}>{n.name}</option>)}</select><button className="command-btn" onClick={connect}>Connect</button></div>
+          <div className="edge-list">{edges.map((e,i)=><span key={i}>{nodes.find(n=>n.id===e.source)?.name||e.source} → {nodes.find(n=>n.id===e.target)?.name||e.target}</span>)}</div>
+        </div>
       </section>
+      <aside className="panel node-config">
+        <div className="panel-head"><div><span className="panel-kicker">NODE CONFIGURATION</span><h2>{selectedNode?.name||"Select a node"}</h2></div></div>
+        {selectedNode?<div className="node-form">
+          <label>Name<input value={selectedNode.name} onChange={e=>updateNode({name:e.target.value})}/></label>
+          {(selectedNode.type==="http.request"||selectedNode.type==="action.http")&&<><label>Method<select value={selectedNode.config.method||"GET"} onChange={e=>updateConfig("method",e.target.value)}><option>GET</option><option>POST</option><option>PUT</option><option>PATCH</option><option>DELETE</option></select></label><label>HTTPS URL<input value={selectedNode.config.url||""} onChange={e=>updateConfig("url",e.target.value)}/></label><label>Body JSON<textarea value={JSON.stringify(selectedNode.config.body||{},null,2)} onChange={e=>{try{updateConfig("body",JSON.parse(e.target.value))}catch{}}}/></label></>}
+          {(selectedNode.type==="logic.condition"||selectedNode.type==="logic.filter")&&<><label>JSON path<input value={selectedNode.config.path||""} onChange={e=>updateConfig("path",e.target.value)}/></label><label>Equals<input value={String(selectedNode.config.equals??"")} onChange={e=>updateConfig("equals",e.target.value)}/></label></>}
+          {selectedNode.type==="logic.switch"&&<><label>JSON path<input value={selectedNode.config.path||""} onChange={e=>updateConfig("path",e.target.value)}/></label><label>Rules JSON<textarea value={JSON.stringify(selectedNode.config.rules||[],null,2)} onChange={e=>{try{updateConfig("rules",JSON.parse(e.target.value))}catch{}}}/></label></>}
+          {selectedNode.type==="trigger.schedule"&&<label>Run every (seconds)<input type="number" min="1" value={selectedNode.config.interval_seconds||3600} onChange={e=>updateConfig("interval_seconds",Number(e.target.value))}/></label>}
+          {selectedNode.type==="delay.wait"&&<label>Delay milliseconds<input type="number" min="0" max="30000" value={selectedNode.config.milliseconds||1000} onChange={e=>updateConfig("milliseconds",Number(e.target.value))}/></label>}
+          {selectedNode.type==="data.set"&&<label>Data JSON<textarea value={JSON.stringify(selectedNode.config.data||{},null,2)} onChange={e=>{try{updateConfig("data",JSON.parse(e.target.value))}catch{}}}/></label>}
+          {(selectedNode.type==="ai.agent"||selectedNode.type==="ai.generate")&&<><label>Provider<input value={selectedNode.config.provider||"openai-compatible"} onChange={e=>updateConfig("provider",e.target.value)}/></label><label>Endpoint<input value={selectedNode.config.endpoint||""} onChange={e=>updateConfig("endpoint",e.target.value)}/></label><label>Model<input value={selectedNode.config.model||"default"} onChange={e=>updateConfig("model",e.target.value)}/></label><label>API key environment variable<input value={selectedNode.config.api_key_env||""} onChange={e=>updateConfig("api_key_env",e.target.value)}/></label><label>Prompt<textarea value={selectedNode.config.prompt||""} onChange={e=>updateConfig("prompt",e.target.value)}/></label></>}
+          <button className="ghost-btn danger-action" onClick={removeNode}>Remove node</button>
+        </div>:<p>Select a workflow node to configure it.</p>}
+      </aside>
     </section>
   </div>;
 }
@@ -349,10 +402,10 @@ function AutomationsPage() {
   const [items,setItems]=useState([]),[loading,setLoading]=useState(true),[builder,setBuilder]=useState(null),[notice,setNotice]=useState("");
   const load=()=>{setLoading(true);automationsApi.list().then(unwrap).then(x=>setItems(Array.isArray(x?.data)?x.data:Array.isArray(x)?x:[])).catch(()=>setItems([])).finally(()=>setLoading(false))};
   useEffect(()=>{load()},[]);
-  if(builder) return <AutomationBuilder automation={builder===true?null:builder} onBack={()=>setBuilder(null)} onSaved={()=>{setBuilder(null);load();}}/>;
+  if(builder)return <AutomationBuilder automation={builder===true?null:builder} onBack={()=>setBuilder(null)} onSaved={()=>{setBuilder(null);load();}}/>;
   const act=async(id,action)=>{try{await automationsApi[action](id);setNotice(action==="activate"?"Automation published.":"Automation paused.");load();setTimeout(()=>setNotice(""),2500)}catch(e){setNotice(e?.response?.data?.message||e?.message||"Action failed.")}};
-  return <div><PageHeader eyebrow="AUTOMATION ENGINE" title="Automations" description="Build n8n-style workflows natively inside GOLD-e GrowthOS." action={<button className="command-btn" onClick={()=>setBuilder(true)}><Plus size={16}/>Create automation</button>}/>{notice&&<div className="action-notice"><Check size={15}/>{notice}</div>}
-    <section className="panel table-panel">{loading?<div className="empty-state"><div className="spinner"/><h3>Loading automations</h3></div>:items.length===0?<div className="empty-state"><div className="empty-icon"><Zap/></div><h3>No automations yet.</h3><p>Create your first workflow with triggers, HTTP actions, conditions and AI-ready nodes.</p><button className="command-btn" onClick={()=>setBuilder(true)}><Plus size={16}/>Build first automation</button></div>:<div className="data-list">{items.map(a=><div className="data-row" key={a.id}><div className="row-icon"><Zap size={17}/></div><div><strong>{a.name}</strong><small>{a.trigger_type} · v{a.version} · {a.graph?.nodes?.length||0} nodes</small></div><span className="status-pill">{a.status}</span><button className="row-action" onClick={()=>setBuilder(a)}>Edit</button>{a.status==="ACTIVE"?<button className="row-action" onClick={()=>act(a.id,"pause")}><Pause size={13}/></button>:<button className="row-action" onClick={()=>act(a.id,"activate")}><Play size={13}/></button>}<button className="row-action" onClick={async()=>{await automationsApi.run(a.id,{payload:{source:"GrowthOS manual test"}});setNotice("Test execution completed.");setTimeout(()=>setNotice(""),2500)}}>Test</button></div>)}</div>}</section></div>;
+  return <div><PageHeader eyebrow="AUTOMATION ENGINE" title="Automations" description="Build native trigger → logic → action workflows inside GOLD-e GrowthOS." action={<button className="command-btn" onClick={()=>setBuilder(true)}><Plus size={16}/>Create automation</button>}/>{notice&&<div className="action-notice"><Check size={15}/>{notice}</div>}
+    <section className="panel table-panel">{loading?<div className="empty-state"><div className="spinner"/><h3>Loading automations</h3></div>:items.length===0?<div className="empty-state"><div className="empty-icon"><Zap/></div><h3>No automations yet.</h3><p>Create your first workflow with triggers, branching, transforms, HTTP actions and AI nodes.</p><button className="command-btn" onClick={()=>setBuilder(true)}><Plus size={16}/>Build first automation</button></div>:<div className="data-list">{items.map(a=><div className="data-row" key={a.id}><div className="row-icon"><Zap size={17}/></div><div><strong>{a.name}</strong><small>{a.trigger_type} · v{a.version} · {a.graph?.nodes?.length||0} nodes · {a.schedule_interval_seconds?a.schedule_interval_seconds+"s interval":a.status}</small></div><span className="status-pill">{a.status}</span><button className="row-action" onClick={()=>setBuilder(a)}>Edit</button>{a.status==="ACTIVE"?<button className="row-action" onClick={()=>act(a.id,"pause")}><Pause size={13}/></button>:<button className="row-action" onClick={()=>act(a.id,"activate")}><Play size={13}/></button>}<button className="row-action" onClick={async()=>{try{await automationsApi.run(a.id,{payload:{source:"GrowthOS manual test"}});setNotice("Test execution completed.");}catch(e){setNotice(e?.response?.data?.error?.message||e?.message||"Test failed.")}setTimeout(()=>setNotice(""),2500)}}>Test</button></div>)}</div>}</section></div>;
 }
 
 function Analytics() {
