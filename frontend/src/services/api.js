@@ -70,4 +70,5 @@ export const automationsApi = {
   pause: (id) => api.post(`/automations/${id}/pause`),
   run: (id, payload = {}) => api.post(`/automations/${id}/run`, payload),
   runs: (id) => api.get(`/automations/${id}/runs`),
+  runSteps: (id, runId) => api.get(`/automations/${id}/runs/${runId}/steps`),
 };
