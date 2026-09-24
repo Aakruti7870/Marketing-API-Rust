@@ -85,6 +85,7 @@ StandardError=append:/var/log/golde-marketing-api/error.log
 WantedBy=multi-user.target
 EOF
 
+sudo cp "$SERVICE_FILE" /etc/systemd/system/golde-marketing-api.service
 sudo chown -R golde:golde "$APP_DIR" /var/log/golde-marketing-api
 sudo chmod 700 "$APP_DIR"
 sudo systemctl daemon-reload
