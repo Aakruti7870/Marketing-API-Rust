@@ -381,7 +381,8 @@ export default function App() {
   let content;
   if(page==="dashboard") content=<Dashboard setPage={setPage}/>;
   else if(page==="analytics") content=<Analytics/>;
-  else if(page==="settings") content=<SettingsPage user={user}/>;\n  else if(page==="automations") content=<AutomationsPage/>;
+  else if(page==="settings") content=<SettingsPage user={user}/>;
+  else if(page==="automations") content=<AutomationsPage/>;
   else content=<SimplePage type={page}/>;
 
   return <Shell user={user} onLogout={logout} page={page} setPage={setPage}>{content}</Shell>;
