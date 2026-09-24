@@ -36,6 +36,11 @@ pub async fn set_status(pool:&PgPool,w:Uuid,id:Uuid,status:&str)->Result<Automat
  let old=get(pool,w,id).await?; let next=if status=="ACTIVE"&&old.trigger_type=="SCHEDULE"{old.schedule_interval_seconds.map(|s|chrono::Utc::now()+chrono::Duration::seconds(s))}else{None};
  sqlx::query_as::<_,Automation>("UPDATE automations SET status=$3,next_run_at=$4,updated_at=NOW() WHERE workspace_id=$1 AND id=$2 RETURNING *").bind(w).bind(id).bind(status).bind(next).fetch_optional(pool).await.map_err(AppError::Database)?.ok_or_else(||AppError::NotFound("Automation not found".into()))
 }
+pub async fn run_steps(pool:&PgPool,w:Uuid,id:Uuid,run_id:Uuid)->Result<Vec<crate::models::AutomationRunStep>,AppError>{
+ let owns=sqlx::query_scalar::<_,Uuid>("SELECT id FROM automation_runs WHERE id=$1 AND automation_id=$2 AND workspace_id=$3").bind(run_id).bind(id).bind(w).fetch_optional(pool).await.map_err(AppError::Database)?;
+ if owns.is_none(){return Err(AppError::NotFound("Automation run not found".into()))}
+ Ok(sqlx::query_as::<_,crate::models::AutomationRunStep>("SELECT * FROM automation_run_steps WHERE run_id=$1 ORDER BY started_at ASC").bind(run_id).fetch_all(pool).await.map_err(AppError::Database)?)
+}
 pub async fn runs(pool:&PgPool,w:Uuid,id:Uuid)->Result<Vec<AutomationRun>,AppError>{
  Ok(sqlx::query_as::<_,AutomationRun>("SELECT * FROM automation_runs WHERE workspace_id=$1 AND automation_id=$2 ORDER BY started_at DESC LIMIT 100").bind(w).bind(id).fetch_all(pool).await.map_err(AppError::Database)?)
 }
