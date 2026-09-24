@@ -254,8 +254,22 @@ function CreateModal({type,onClose,onDone}) {
   </Modal>;
 }
 
+function AgentReviewModal({runId,onClose,onDone}) {
+  const [run,setRun]=useState(null),[busy,setBusy]=useState(false),[error,setError]=useState("");
+  useEffect(()=>{agentsApi.run(runId).then(unwrap).then(setRun).catch(err=>setError(err?.response?.data?.error?.message||err?.message||"Unable to load agent run."))},[runId]);
+  const act=async(step,kind)=>{setBusy(true);setError("");try{if(kind==="approve")await agentsApi.approve(runId,step.id);else await agentsApi.reject(runId,step.id,{reason:"Rejected from GrowthOS Command Center"});const next=await agentsApi.run(runId);setRun(unwrap(next));onDone()}catch(err){setError(err?.response?.data?.error?.message||err?.message||"Workflow action failed.")}finally{setBusy(false)}};
+  const steps=run?.steps||[];
+  return <Modal title="Agent approval workflow" onClose={onClose}>
+    {error&&<div className="alert error">{error}</div>}
+    {!run?<div className="empty-state compact"><div className="spinner"/><h3>Loading agent run</h3></div>:<div className="review-list">
+      <div className="review-summary"><strong>{run.name}</strong><span>{run.status} · {run.agent_type}</span></div>
+      {steps.length===0?<div className="command-empty">No workflow steps returned for this run.</div>:steps.map(step=><div className="review-step" key={step.id}><div><b>{step.name}</b><span>{step.description||step.action_type||"Agent step"} · {step.status}</span></div>{step.requires_approval&&["PENDING","WAITING","AWAITING_APPROVAL"].includes(String(step.status).toUpperCase())?<div className="review-actions"><button disabled={busy} onClick={()=>act(step,"approve")}><Check size={13}/>Approve</button><button disabled={busy} onClick={()=>act(step,"reject")}><X size={13}/>Reject</button></div>:<em>{step.status}</em>}</div>)}
+    </div>}
+  </Modal>;
+}
+
 function SimplePage({ type }) {
-  const [items,setItems]=useState([]),[loading,setLoading]=useState(true),[modal,setModal]=useState(false),[notice,setNotice]=useState("");
+  const [items,setItems]=useState([]),[loading,setLoading]=useState(true),[modal,setModal]=useState(false),[reviewRun,setReviewRun]=useState(null),[notice,setNotice]=useState("");
   const configs={
     agents:{title:"AI Agents",eyebrow:"AUTOMATION",desc:"Run AI workflows and review human approval checkpoints.",api:agentsApi.runs,icon:Bot,empty:"No agent runs yet."},
     campaigns:{title:"Campaigns",eyebrow:"ORCHESTRATION",desc:"Create, launch and monitor your marketing campaigns.",api:campaignsApi.list,icon:Target,empty:"No campaigns yet."},
@@ -272,11 +286,11 @@ function SimplePage({ type }) {
     <section className="panel table-panel">
       {loading?<div className="empty-state"><div className="spinner"/><h3>Loading workspace data</h3><p>Connecting to the Rust API…</p></div>
       :items.length===0?<div className="empty-state"><div className="empty-icon"><c.icon/></div><h3>{c.empty}</h3><p>This workspace is ready. Create the first {type==="agents"?"AI run":type==="messages"?"WhatsApp message":type.slice(0,-1)}.</p><button className="command-btn" onClick={()=>setModal(true)}><Plus size={16}/>Get started</button></div>
-      :<div className="data-list">{items.map((item,i)=><div className="data-row" key={item.id||i}><div className="row-icon"><c.icon size={17}/></div><div><strong>{item.name||item.title||item.status||`Record ${i+1}`}</strong><small>{item.description||item.email||item.phone||item.content||item.channel||item.created_at||"Workspace record"}</small></div><span className="status-pill">{item.status||"Active"}</span>
+      :<div className="data-list">{items.map((item,i)=><div className="data-row" key={item.id||i}><div className="row-icon"><c.icon size={17}/></div><div><strong>{item.name||item.title||item.status||`Record ${i+1}`}</strong><small>{item.description||item.email||item.phone||item.content||item.channel||item.created_at||"Workspace record"}</small></div><span className="status-pill">{item.status||"Active"}</span>{type==="agents"&&item.id&&<button className="row-action" onClick={()=>setReviewRun(item.id)}>Review</button>}
         {type==="campaigns"&&item.id&&(String(item.status).toLowerCase()==="active"?<button className="row-action" onClick={()=>action(()=>campaignsApi.pause(item.id),"Campaign paused")}><Pause size={13}/></button>:<button className="row-action" onClick={()=>action(()=>campaignsApi.launch(item.id),"Campaign launch requested")}><Play size={13}/></button>)}
         <ChevronRight size={16}/></div>)}</div>}
     </section>
-    {modal&&<CreateModal type={type} onClose={()=>setModal(false)} onDone={()=>{setNotice("Action completed successfully.");load();setTimeout(()=>setNotice(""),3000)}}/>}
+    {modal&&<CreateModal type={type} onClose={()=>setModal(false)} onDone={()=>{setNotice("Action completed successfully.");load();setTimeout(()=>setNotice(""),3000)}}/>}{reviewRun&&<AgentReviewModal runId={reviewRun} onClose={()=>setReviewRun(null)} onDone={()=>{setNotice("Agent workflow updated.");load();}}/>}
   </div>;
 }
 function Analytics() {
