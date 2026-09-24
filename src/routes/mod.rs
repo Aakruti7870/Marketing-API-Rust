@@ -6,6 +6,8 @@ pub mod messages;
 pub mod agents;
 pub mod analytics;
 pub mod webhooks;
+pub mod automations;
+pub mod automation_webhooks;
 
 use crate::state::AppState;
 use axum::{routing::get, Json, Router};
@@ -21,6 +23,8 @@ pub fn create_api_router(state: AppState) -> Router {
         .nest("/api/v1/messages", messages::routes(state.clone()))
         .nest("/api/v1/agents", agents::routes(state.clone()))
         .nest("/api/v1/analytics", analytics::routes(state.clone()))
+        .nest("/api/v1/automations", automations::routes(state.clone()))
+        .route("/api/v1/automation-webhooks/:token", axum::routing::post(automation_webhooks::trigger).with_state(state.clone()))
         .nest("/api/v1/webhooks", webhooks::routes(state))
 }
 
