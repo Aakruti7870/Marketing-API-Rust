@@ -6,6 +6,7 @@ pub mod message;
 pub mod agent;
 pub mod analytics;
 pub mod audit;
+pub mod automation;
 
 pub use user::*;
 pub use workspace::*;
@@ -15,3 +16,4 @@ pub use message::*;
 pub use agent::*;
 pub use analytics::*;
 pub use audit::*;
+pub use automation::*;
