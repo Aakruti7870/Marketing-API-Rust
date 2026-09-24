@@ -4,7 +4,7 @@ import {
   Command, ContactRound, LayoutDashboard, LogOut, Menu, MessageSquare,
   Pause, Play, Plus, Rocket, Search, Settings, Sparkles, Target, Users, X, Zap
 } from "lucide-react";
-import { authApi, dashboardApi, workspaceApi, agentsApi, campaignsApi, contactsApi, messagesApi, unwrap } from "./services/api";
+import { authApi, dashboardApi, workspaceApi, agentsApi, campaignsApi, contactsApi, messagesApi, automationsApi, unwrap } from "./services/api";
 import "./App.css";
 
 const NAV = [
@@ -12,7 +12,7 @@ const NAV = [
   { id:"contacts", label:"Contacts", icon:ContactRound },
   { id:"campaigns", label:"Campaigns", icon:Target },
   { id:"messages", label:"WhatsApp", icon:MessageSquare },
-  { id:"agents", label:"AI Agents", icon:Bot },
+  { id:"agents", label:"AI Agents", icon:Bot },\n  { id:"automations", label:"Automations", icon:Zap },
   { id:"analytics", label:"Analytics", icon:BarChart3 },
   { id:"settings", label:"Settings", icon:Settings },
 ];
@@ -293,6 +293,67 @@ function SimplePage({ type }) {
     {modal&&<CreateModal type={type} onClose={()=>setModal(false)} onDone={()=>{setNotice("Action completed successfully.");load();setTimeout(()=>setNotice(""),3000)}}/>}{reviewRun&&<AgentReviewModal runId={reviewRun} onClose={()=>setReviewRun(null)} onDone={()=>{setNotice("Agent workflow updated.");load();}}/>}
   </div>;
 }
+function AutomationBuilder({ automation, onBack, onSaved }) {
+  const [name,setName]=useState(automation?.name||"New Growth Automation");
+  const [nodes,setNodes]=useState(automation?.graph?.nodes||[
+    {id:"trigger",name:"Webhook Trigger",type:"trigger.webhook",config:{},position:[80,180]},
+    {id:"http",name:"HTTP Request",type:"action.http",config:{method:"POST",url:"https://example.com/webhook"},position:[360,180]},
+    {id:"set",name:"Set Data",type:"data.set",config:{data:{status:"processed"}},position:[640,180]}
+  ]);
+  const [busy,setBusy]=useState(false),[notice,setNotice]=useState("");
+  const edges=[{source:"trigger",target:"http"},{source:"http",target:"set"}];
+  const save=async(publish=false)=>{
+    setBusy(true);setNotice("");
+    try{
+      const graph={nodes,edges};
+      const payload={name,description:"GOLD-e visual automation workflow",trigger_type:nodes[0]?.type==="trigger.schedule"?"SCHEDULE":nodes[0]?.type==="trigger.webhook"?"WEBHOOK":"MANUAL",trigger_config:{},graph};
+      const res=automation?.id?await automationsApi.update(automation.id,payload):await automationsApi.create(payload);
+      const saved=unwrap(res);
+      if(publish) await automationsApi.activate(saved.id);
+      setNotice(publish?"Automation published and active.":"Automation saved as draft.");
+      onSaved();
+    }catch(e){setNotice(e?.response?.data?.error?.message||e?.response?.data?.message||e?.message||"Unable to save automation.");}
+    finally{setBusy(false)}
+  };
+  const addNode=(type,name)=>{
+    const id=`node-${Date.now()}`;
+    const config=type==="action.http"?{method:"GET",url:"https://api.example.com"}:type==="logic.condition"?{path:"status",equals:"ready"}:type==="delay.wait"?{milliseconds:1000}:type==="ai.agent"?{agent_type:"growth"}:{data:{}};
+    setNodes([...nodes,{id,name,type,config,position:[80+nodes.length*280,360]}]);
+  };
+  return <div>
+    <PageHeader eyebrow="AUTOMATION BUILDER" title={name} description="Compose triggers, logic, AI and actions into a reusable workflow." action={<div className="builder-actions"><button className="ghost-btn" onClick={onBack}>Back</button><button className="command-btn ghost" disabled={busy} onClick={()=>save(false)}>Save draft</button><button className="command-btn" disabled={busy} onClick={()=>save(true)}><Rocket size={15}/>Publish</button></div>}/>
+    {notice&&<div className="action-notice"><Check size={15}/>{notice}</div>}
+    <section className="builder-layout">
+      <aside className="panel node-library"><div className="panel-head"><div><span className="panel-kicker">NODE LIBRARY</span><h2>Build blocks</h2></div></div>
+        <input value={name} onChange={e=>setName(e.target.value)} placeholder="Automation name"/>
+        <button onClick={()=>addNode("trigger.manual","Manual Trigger")}><Zap size={15}/>Manual Trigger</button>
+        <button onClick={()=>addNode("trigger.webhook","Webhook Trigger")}><Zap size={15}/>Webhook Trigger</button>
+        <button onClick={()=>addNode("trigger.schedule","Schedule Trigger")}><Zap size={15}/>Schedule Trigger</button>
+        <button onClick={()=>addNode("action.http","HTTP Request")}><ArrowRight size={15}/>HTTP Request</button>
+        <button onClick={()=>addNode("logic.condition","IF / Condition")}><Target size={15}/>IF / Condition</button>
+        <button onClick={()=>addNode("delay.wait","Wait / Delay")}><Pause size={15}/>Wait / Delay</button>
+        <button onClick={()=>addNode("ai.agent","AI Agent")}><Bot size={15}/>AI Agent</button>
+        <button onClick={()=>addNode("data.set","Set Data")}><Settings size={15}/>Set Data</button>
+      </aside>
+      <section className="panel workflow-canvas">
+        <div className="canvas-toolbar"><span>WORKFLOW · {nodes.length} NODES</span><span>Draft graph</span></div>
+        <div className="canvas-grid">{nodes.map((n,i)=><div className="workflow-node" key={n.id}><div className="node-index">{i+1}</div><div><strong>{n.name}</strong><small>{n.type.replaceAll("."," · ").toUpperCase()}</small></div>{i<nodes.length-1&&<div className="node-link"/>}</div>)}</div>
+        <div className="canvas-help">Connectors are stored as workflow edges. The execution engine supports Webhook/Manual triggers, HTTP requests, conditions, delays and data transforms now; AI nodes are reserved for the agent runtime integration.</div>
+      </section>
+    </section>
+  </div>;
+}
+
+function AutomationsPage() {
+  const [items,setItems]=useState([]),[loading,setLoading]=useState(true),[builder,setBuilder]=useState(null),[notice,setNotice]=useState("");
+  const load=()=>{setLoading(true);automationsApi.list().then(unwrap).then(x=>setItems(Array.isArray(x?.data)?x.data:Array.isArray(x)?x:[])).catch(()=>setItems([])).finally(()=>setLoading(false))};
+  useEffect(()=>{load()},[]);
+  if(builder) return <AutomationBuilder automation={builder===true?null:builder} onBack={()=>setBuilder(null)} onSaved={()=>{setBuilder(null);load();}}/>;
+  const act=async(id,action)=>{try{await automationsApi[action](id);setNotice(action==="activate"?"Automation published.":"Automation paused.");load();setTimeout(()=>setNotice(""),2500)}catch(e){setNotice(e?.response?.data?.message||e?.message||"Action failed.")}};
+  return <div><PageHeader eyebrow="AUTOMATION ENGINE" title="Automations" description="Build n8n-style workflows natively inside GOLD-e GrowthOS." action={<button className="command-btn" onClick={()=>setBuilder(true)}><Plus size={16}/>Create automation</button>}/>{notice&&<div className="action-notice"><Check size={15}/>{notice}</div>}
+    <section className="panel table-panel">{loading?<div className="empty-state"><div className="spinner"/><h3>Loading automations</h3></div>:items.length===0?<div className="empty-state"><div className="empty-icon"><Zap/></div><h3>No automations yet.</h3><p>Create your first workflow with triggers, HTTP actions, conditions and AI-ready nodes.</p><button className="command-btn" onClick={()=>setBuilder(true)}><Plus size={16}/>Build first automation</button></div>:<div className="data-list">{items.map(a=><div className="data-row" key={a.id}><div className="row-icon"><Zap size={17}/></div><div><strong>{a.name}</strong><small>{a.trigger_type} · v{a.version} · {a.graph?.nodes?.length||0} nodes</small></div><span className="status-pill">{a.status}</span><button className="row-action" onClick={()=>setBuilder(a)}>Edit</button>{a.status==="ACTIVE"?<button className="row-action" onClick={()=>act(a.id,"pause")}><Pause size={13}/></button>:<button className="row-action" onClick={()=>act(a.id,"activate")}><Play size={13}/></button>}<button className="row-action" onClick={async()=>{await automationsApi.run(a.id,{payload:{source:"GrowthOS manual test"}});setNotice("Test execution completed.");setTimeout(()=>setNotice(""),2500)}}>Test</button></div>)}</div>}</section></div>;
+}
+
 function Analytics() {
   const [data,setData]=useState(null);
   useEffect(()=>{dashboardApi.get().then(r=>setData(unwrap(r))).catch(()=>{})},[]);
@@ -319,7 +380,7 @@ export default function App() {
   let content;
   if(page==="dashboard") content=<Dashboard setPage={setPage}/>;
   else if(page==="analytics") content=<Analytics/>;
-  else if(page==="settings") content=<SettingsPage user={user}/>;
+  else if(page==="settings") content=<SettingsPage user={user}/>;\n  else if(page==="automations") content=<AutomationsPage/>;
   else content=<SimplePage type={page}/>;
 
   return <Shell user={user} onLogout={logout} page={page} setPage={setPage}>{content}</Shell>;
