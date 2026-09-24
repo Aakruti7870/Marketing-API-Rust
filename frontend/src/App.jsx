@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  Activity, BarChart3, Bot, ChevronDown, ChevronLeft, ChevronRight, CircleHelp,
+  Activity, ArrowRight, BarChart3, Bot, Check, ChevronDown, ChevronLeft, ChevronRight, CircleHelp,
   Command, ContactRound, LayoutDashboard, LogOut, Menu, MessageSquare,
-  Plus, Rocket, Search, Settings, Sparkles, Target, Users, X, Zap
+  Pause, Play, Plus, Rocket, Search, Settings, Sparkles, Target, Users, X, Zap
 } from "lucide-react";
 import { authApi, dashboardApi, workspaceApi, agentsApi, campaignsApi, contactsApi, messagesApi, unwrap } from "./services/api";
 import "./App.css";
