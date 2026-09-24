@@ -46,12 +46,13 @@ pub async fn runs(pool:&PgPool,w:Uuid,id:Uuid)->Result<Vec<AutomationRun>,AppErr
 }
 pub async fn run(pool:&PgPool,http:&Client,w:Uuid,id:Uuid,payload:Value)->Result<AutomationRun,AppError>{
  let a=get(pool,w,id).await?; if a.status=="PAUSED"{return Err(AppError::BadRequest("Automation is paused".into()))}
- let rid=Uuid::new_v4(); let mut row=sqlx::query_as::<_,AutomationRun>("INSERT INTO automation_runs(id,automation_id,workspace_id,status,trigger_payload) VALUES($1,$2,$3,'RUNNING',$4) RETURNING *").bind(rid).bind(id).bind(w).bind(payload.clone()).fetch_one(pool).await.map_err(AppError::Database)?;
+ let rid=Uuid::new_v4(); sqlx::query("INSERT INTO automation_runs(id,automation_id,workspace_id,status,trigger_payload) VALUES($1,$2,$3,'RUNNING',$4)").bind(rid).bind(id).bind(w).bind(payload.clone()).execute(pool).await.map_err(AppError::Database)?;
  let graph:AutomationGraph=serde_json::from_value(a.graph.clone()).map_err(|e|AppError::BadRequest(format!("Invalid workflow graph: {e}")))?;
  match execute_graph(pool,http,rid,&graph,payload).await{
-  Ok(v)=>row=sqlx::query_as::<_,AutomationRun>("UPDATE automation_runs SET status='COMPLETED',output_data=$2,completed_at=NOW() WHERE id=$1 RETURNING *").bind(rid).bind(v).fetch_one(pool).await.map_err(AppError::Database)?,
-  Err(e)=>row=sqlx::query_as::<_,AutomationRun>("UPDATE automation_runs SET status='FAILED',error_message=$2,completed_at=NOW() WHERE id=$1 RETURNING *").bind(rid).bind(e.to_string()).fetch_one(pool).await.map_err(AppError::Database)?
- }; Ok(row)
+  Ok(v)=>{sqlx::query("UPDATE automation_runs SET status='COMPLETED',output_data=$2,completed_at=NOW() WHERE id=$1").bind(rid).bind(v).execute(pool).await.map_err(AppError::Database)?;},
+  Err(e)=>{sqlx::query("UPDATE automation_runs SET status='FAILED',error_message=$2,completed_at=NOW() WHERE id=$1").bind(rid).bind(e.to_string()).execute(pool).await.map_err(AppError::Database)?;}
+ }
+ Ok(sqlx::query_as::<_,AutomationRun>("SELECT * FROM automation_runs WHERE id=$1").bind(rid).fetch_one(pool).await.map_err(AppError::Database)?)
 }
 pub async fn run_due_schedules(pool:&PgPool,http:&Client)->Result<usize,AppError>{
  let rows=sqlx::query_as::<_,Automation>("UPDATE automations SET next_run_at=NOW()+make_interval(secs=>schedule_interval_seconds),last_run_at=NOW() WHERE id IN(SELECT id FROM automations WHERE status='ACTIVE' AND trigger_type='SCHEDULE' AND next_run_at<=NOW() AND schedule_interval_seconds>0 ORDER BY next_run_at FOR UPDATE SKIP LOCKED LIMIT 20) RETURNING *").fetch_all(pool).await.map_err(AppError::Database)?;
@@ -107,8 +108,8 @@ async fn ai_node(http:&Client,c:&Value,input:&Value)->Result<NodeResult,AppError
 fn validate_url(raw:&str)->Result<(),AppError>{let u=Url::parse(raw).map_err(|_|AppError::BadRequest("Invalid URL".into()))?;if u.scheme()!="https"&&env::var("AUTOMATION_ALLOW_HTTP").ok().as_deref()!=Some("true"){return Err(AppError::BadRequest("Automation HTTP requires HTTPS".into()))}let h=u.host_str().unwrap_or("").to_lowercase();if h=="localhost"||h.ends_with(".local")||h=="0.0.0.0"||h=="127.0.0.1"||h=="::1"{return Err(AppError::BadRequest("Private/local host blocked".into()))}if let Ok(ip)=h.parse::<IpAddr>(){if ip.is_private()||ip.is_loopback(){return Err(AppError::BadRequest("Private IP blocked".into()))}}Ok(())}
 fn schedule_interval(c:&Value)->Result<Option<i64>,AppError>{let x=c.get("interval_seconds").and_then(Value::as_i64).or_else(||c.get("every_seconds").and_then(Value::as_i64));if let Some(v)=x{if !(1..=31536000).contains(&v){return Err(AppError::BadRequest("Schedule interval must be 1 second to 1 year".into()))}return Ok(Some(v))}Ok(None)}
 fn lookup<'a>(v:&'a Value,p:&str)->&'a Value{p.split('.').filter(|x|!x.is_empty()).fold(v,|v,k|v.get(k).unwrap_or(&Value::Null))}
-fn merge(v:&mut Value,e:Value){if let(Some(a),Some(b))=(v.as_object_mut(),e.as_object()){for(k,x)in b{a.insert(k.clone(),x.clone())}}else{*v=e}}
-fn render(v:&Value,input:&Value)->Result<Value,AppError>{match v{Value::String(s)=>Ok(Value::String(render_string(s,input))),Value::Array(a)=>Ok(Value::Array(a.iter().map(|x|render(x,input)).collect::<Result<Vec<_>,_>>()?)),Value::Object(o)=>{let mut m=Map::new();for(k,x)in o{m.insert(k.clone(),render(x,input)?)}Ok(Value::Object(m))},_=>Ok(v.clone())}}
+fn merge(v:&mut Value,e:Value){if let(Some(a),Some(b))=(v.as_object_mut(),e.as_object()){for(k,x)in b{a.insert(k.clone(),x.clone());}}else{*v=e}}
+fn render(v:&Value,input:&Value)->Result<Value,AppError>{match v{Value::String(s)=>Ok(Value::String(render_string(s,input))),Value::Array(a)=>Ok(Value::Array(a.iter().map(|x|render(x,input)).collect::<Result<Vec<_>,_>>()?)),Value::Object(o)=>{let mut m=Map::new();for(k,x)in o{m.insert(k.clone(),render(x,input)?);}Ok(Value::Object(m))},_=>Ok(v.clone())}}
 fn render_string(s:&str,input:&Value)->String{let mut out=s.to_string();let mut pos=0;while let Some(i)=out[pos..].find("{{$json."){let start=pos+i;if let Some(e)=out[start..].find("}}"){let end=start+e;let token=&out[start..end+2];let path=&out[start+8..end];out=out.replacen(token,&lookup(input,path).to_string(),1);pos=start+1}else{break}}out}
 fn secret(v:Option<&Value>)->Result<Option<String>,AppError>{match v{None=>Ok(None),Some(Value::String(n))=>Ok(Some(env::var(n).map_err(|_|AppError::BadRequest(format!("Missing environment secret: {n}")))?)),Some(Value::Object(o))=>{let n=o.get("$env").and_then(Value::as_str).ok_or_else(||AppError::BadRequest("Invalid secret reference".into()))?;Ok(Some(env::var(n).map_err(|_|AppError::BadRequest(format!("Missing environment secret: {n}")))?))},_=>Err(AppError::BadRequest("Invalid secret reference".into()))}}
 pub fn validate_graph(g:&AutomationGraph)->Result<(),AppError>{
