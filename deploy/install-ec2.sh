@@ -131,16 +131,17 @@ sudo ufw allow OpenSSH || true
 sudo ufw allow 'Nginx Full' || true
 sudo ufw --force enable || true
 
-CERT_NAME=api.goldetech.com-api
+CERT_NAME=api.goldetech.com
 CERT_FILE=/etc/letsencrypt/live/$CERT_NAME/fullchain.pem
 KEY_FILE=/etc/letsencrypt/live/$CERT_NAME/privkey.pem
 
 echo "==> Ensuring dedicated certificate for api.goldetech.com..."
-sudo certbot certonly --webroot -w /var/www/html --non-interactive --agree-tos --register-unsafely-without-email --force-renewal --cert-name "$CERT_NAME" -d api.goldetech.com
-
-sudo test -s "$CERT_FILE"
-sudo test -s "$KEY_FILE"
-sudo openssl x509 -in "$CERT_FILE" -noout -checkhost api.goldetech.com
+if sudo test -s "$CERT_FILE" && sudo test -s "$KEY_FILE" && sudo openssl x509 -in "$CERT_FILE" -noout -checkhost api.goldetech.com >/dev/null 2>&1; then
+  echo "Existing valid api.goldetech.com certificate found; reusing it."
+else
+  echo "No valid api.goldetech.com certificate found; requesting one from Let's Encrypt..."
+  sudo certbot certonly --webroot -w /var/www/html --non-interactive --agree-tos --register-unsafely-without-email --cert-name "$CERT_NAME" -d api.goldetech.com
+fi
 
 sudo test -s "$CERT_FILE"
 sudo test -s "$KEY_FILE"
