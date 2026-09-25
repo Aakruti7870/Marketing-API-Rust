@@ -1,7 +1,7 @@
-use crate::{error::AppError,middleware::{require_workspace_roles,TenantContext},models::{AutomationDefinition,TriggerAutomationDto},services::automation_service,state::AppState,utils::response::json_success};
+use crate::{error::AppError,middleware::{require_workspace_roles,TenantContext},models::AutomationDefinition,services::automation_service,state::AppState,utils::response::json_success};
 use axum::{extract::{Path,State},routing::{get,post},Json,Router};
 use serde::{Deserialize,Serialize};
-use serde_json::Value;
+use serde_json::{json,Value};
 use uuid::Uuid;
 
 #[derive(Debug,Serialize,Deserialize)]
