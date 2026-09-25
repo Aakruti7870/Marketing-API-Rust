@@ -43,13 +43,15 @@ jobs:
       - name: Build
         run: cargo build --release --bin golde-marketing-api
 
-      - name: Test EC2 connection
+      - name: Prepare release staging directory
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
-          script: echo "EC2_CONNECTION_OK"
+          script: |
+            rm -rf /tmp/golde-marketing-api-release
+            mkdir -p /tmp/golde-marketing-api-release
 
       - name: Upload release
         uses: appleboy/scp-action@v0.1.7
@@ -59,3 +61,31 @@ jobs:
           key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
           source: "target/release/golde-marketing-api,migrations"
           target: "/tmp/golde-marketing-api-release/"
+
+      - name: Activate release and restart service
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+          script: |
+            set -euo pipefail
+            APP_DIR=/opt/golde-marketing-api
+            RELEASE_DIR=/tmp/golde-marketing-api-release
+
+            sudo systemctl stop golde-marketing-api.service 2>/dev/null || true
+            BINARY_PATH=$(find "$RELEASE_DIR" -type f -name golde-marketing-api -print -quit)
+            if [ -z "$BINARY_PATH" ]; then
+              echo "Release binary not found under $RELEASE_DIR" >&2
+              exit 1
+            fi
+            sudo cp "$BINARY_PATH" "$APP_DIR/bin/golde-marketing-api"
+            sudo chmod 755 "$APP_DIR/bin/golde-marketing-api"
+            sudo chown golde:golde "$APP_DIR/bin/golde-marketing-api"
+            find "$RELEASE_DIR" -type f -name '*.sql' -exec sudo cp {} "$APP_DIR/migrations/" \; 2>/dev/null || true
+            sudo chown -R golde:golde "$APP_DIR/migrations" 2>/dev/null || true
+            sudo systemctl daemon-reload
+            sudo systemctl restart golde-marketing-api
+            sleep 3
+            curl -fsS http://127.0.0.1:4000/health
+            curl -fsS https://api.goldetech.com/health
