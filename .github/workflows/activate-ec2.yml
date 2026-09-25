@@ -16,7 +16,7 @@ jobs:
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
           source: "deploy/install-ec2.sh"
-          target: "/tmp/golde-marketing-api-release/"
+          target: "/tmp/"
 
       - name: Activate production service
         uses: appleboy/ssh-action@v1.0.3
@@ -25,5 +25,5 @@ jobs:
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
           script: |
-            chmod +x /tmp/golde-marketing-api-release/install-ec2.sh
-            /tmp/golde-marketing-api-release/install-ec2.sh
+            chmod +x /tmp/install-ec2.sh
+            /tmp/install-ec2.sh
