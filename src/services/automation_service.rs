@@ -111,6 +111,11 @@ async fn execute_run(state:&AppState, run_id:Uuid, automation_id:Uuid, payload:V
         let step=sqlx::query("INSERT INTO automation_run_steps(run_id,node_key,node_type,input) VALUES($1,$2,$3,$4) RETURNING id")
             .bind(run_id).bind(&key).bind(&typ).bind(&vars).fetch_one(&state.pool).await?;
         let step_id:Uuid=step.try_get("id")?;
+        if typ == "APPROVAL" {
+            sqlx::query("UPDATE automation_run_steps SET status='WAITING_APPROVAL',completed_at=NULL WHERE id=$1").bind(step_id).execute(&state.pool).await?;
+            sqlx::query("UPDATE automation_runs SET status='WAITING_APPROVAL',variables=$1 WHERE id=$2").bind(&vars).bind(run_id).execute(&state.pool).await?;
+            return Ok(());
+        }
         match execute_node(state,&typ,&cfg,&vars).await {
             Ok(out)=>{
                 vars=merge(vars,out.clone());
@@ -178,6 +183,59 @@ fn condition_matches(c:&Value,vars:&Value)->bool {
 fn merge(mut a:Value,b:Value)->Value { if let (Some(am),Some(bm))=(a.as_object_mut(),b.as_object()){for(k,v) in bm{am.insert(k.clone(),v.clone());}} a }
 fn interpolate(v:&Value,vars:&Value)->Value { match v {Value::String(s)=>Value::String(interpolate_str(s,vars)),Value::Array(a)=>Value::Array(a.iter().map(|x|interpolate(x,vars)).collect()),Value::Object(m)=>Value::Object(m.iter().map(|(k,v)|(k.clone(),interpolate(v,vars))).collect()),x=>x.clone()} }
 fn interpolate_str(s:&str,vars:&Value)->String { let mut out=s.to_string(); for _ in 0..20 { let Some(a)=out.find("{{") else{break}; let Some(rel)=out[a+2..].find("}}") else{break}; let b=a+2+rel; let mut v=vars; for p in out[a+2..b].trim().split('.') {v=match v.get(p){Some(x)=>x,None=>&Value::Null};} let rep=v.as_str().map(str::to_owned).unwrap_or_else(||v.to_string()); out.replace_range(a..b+2,&rep); } out }
+
+pub async fn approve_run(state:&AppState, workspace_id:Uuid, run_id:Uuid, step_id:Uuid)->Result<(),AppError>{
+    let run=sqlx::query("SELECT automation_id,variables,status FROM automation_runs WHERE id=$1 AND workspace_id=$2 FOR UPDATE")
+        .bind(run_id).bind(workspace_id).fetch_optional(&state.pool).await?
+        .ok_or_else(||AppError::NotFound("Automation run not found".into()))?;
+    let status:String=run.try_get("status")?;
+    if status!="WAITING_APPROVAL" { return Err(AppError::Conflict("Run is not waiting for approval".into())); }
+    let automation_id:Uuid=run.try_get("automation_id")?;
+    let mut vars:Value=run.try_get("variables")?;
+    let step=sqlx::query("SELECT node_key,status FROM automation_run_steps WHERE id=$1 AND run_id=$2")
+        .bind(step_id).bind(run_id).fetch_optional(&state.pool).await?
+        .ok_or_else(||AppError::NotFound("Approval step not found".into()))?;
+    let key:String=step.try_get("node_key")?;
+    let step_status:String=step.try_get("status")?;
+    if step_status!="WAITING_APPROVAL" { return Err(AppError::Conflict("Step is not waiting for approval".into())); }
+
+    sqlx::query("UPDATE automation_run_steps SET status='COMPLETED',completed_at=NOW(),output=$1 WHERE id=$2")
+        .bind(json!({"approved":true})).bind(step_id).execute(&state.pool).await?;
+
+    let edges=sqlx::query("SELECT target_node_key,config FROM automation_edges WHERE automation_id=$1 AND source_node_key=$2")
+        .bind(automation_id).bind(&key).fetch_all(&state.pool).await?;
+    let next=edges.into_iter().find(|r|condition_matches(&r.try_get::<Value,_>("config").unwrap_or(json!({})),&vars))
+        .map(|r|r.try_get::<String,_>("target_node_key").unwrap());
+
+    let nodes=sqlx::query("SELECT node_key,node_type,config FROM automation_nodes WHERE automation_id=$1").bind(automation_id).fetch_all(&state.pool).await?;
+    let map:HashMap<String,(String,Value)>=nodes.into_iter().map(|r|Ok::<_,sqlx::Error>((r.try_get("node_key")?,(r.try_get("node_type")?,r.try_get("config")?)))).collect::<Result<_,_>>()?;
+
+    let mut current=next;
+    let mut visited=HashSet::new();
+    while let Some(k)=current {
+        if !visited.insert(k.clone()) { return Err(AppError::BadRequest("Automation contains a cycle".into())); }
+        let (typ,cfg)=map.get(&k).ok_or_else(||AppError::BadRequest("Broken workflow edge".into()))?.clone();
+        let step=sqlx::query("INSERT INTO automation_run_steps(run_id,node_key,node_type,input) VALUES($1,$2,$3,$4) RETURNING id")
+            .bind(run_id).bind(&k).bind(&typ).bind(&vars).fetch_one(&state.pool).await?;
+        let sid:Uuid=step.try_get("id")?;
+        match execute_node(state,&typ,&cfg,&vars).await {
+            Ok(out)=>{
+                vars=merge(vars,out.clone());
+                sqlx::query("UPDATE automation_run_steps SET status='COMPLETED',output=$1,completed_at=NOW() WHERE id=$2").bind(out).bind(sid).execute(&state.pool).await?;
+            }
+            Err(e)=>{
+                let msg=e.to_string();
+                sqlx::query("UPDATE automation_run_steps SET status='FAILED',error=$1,completed_at=NOW() WHERE id=$2").bind(&msg).bind(sid).execute(&state.pool).await?;
+                sqlx::query("UPDATE automation_runs SET status='FAILED',error=$1,variables=$2,completed_at=NOW() WHERE id=$3").bind(&msg).bind(&vars).bind(run_id).execute(&state.pool).await?;
+                return Err(e);
+            }
+        }
+        let next_edges=sqlx::query("SELECT target_node_key,config FROM automation_edges WHERE automation_id=$1 AND source_node_key=$2").bind(automation_id).bind(&k).fetch_all(&state.pool).await?;
+        current=next_edges.into_iter().find(|r|condition_matches(&r.try_get::<Value,_>("config").unwrap_or(json!({})),&vars)).map(|r|r.try_get::<String,_>("target_node_key").unwrap());
+    }
+    sqlx::query("UPDATE automation_runs SET status='COMPLETED',variables=$1,completed_at=NOW() WHERE id=$2").bind(vars).bind(run_id).execute(&state.pool).await?;
+    Ok(())
+}
 
 pub async fn scheduler_tick(state:&AppState)->Result<(),AppError>{
     let rows=sqlx::query("SELECT s.id,s.automation_id,a.workspace_id,s.interval_seconds FROM automation_schedules s JOIN automations a ON a.id=s.automation_id WHERE s.enabled AND a.status='PUBLISHED' AND s.next_run_at<=NOW() LIMIT 25")
