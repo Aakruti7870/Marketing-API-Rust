@@ -50,11 +50,12 @@ jobs:
             sudo cp -r /tmp/golde-portal-release/frontend/dist/. /opt/golde-portal/
             sudo chown -R www-data:www-data /opt/golde-portal
 
-            # GOLD-e GrowthOS must be the HTTPS virtual host for the public website.
-            # Discover the existing Let's Encrypt certificate covering the public domains.
+            # Reuse the existing Let's Encrypt certificate for the public website.
+            # The previous check over-escaped the hostname regex and could not match
+            # a valid certificate even though /etc/letsencrypt/live/goldetech.com exists.
             CERT_DIR=""
             for d in /etc/letsencrypt/live/*; do
-              if [ -f "$d/fullchain.pem" ] && sudo openssl x509 -in "$d/fullchain.pem" -noout -ext subjectAltName 2>/dev/null | grep -Eq 'DNS:(goldetech\\.com|www\\.goldetech\\.com)(,|$)'; then
+              if [ -f "$d/fullchain.pem" ] && sudo openssl x509 -in "$d/fullchain.pem" -noout -ext subjectAltName 2>/dev/null | grep -Eq 'DNS:(goldetech\.com|www\.goldetech\.com)(,|$)'; then
                 CERT_DIR="$d"
                 break
               fi
@@ -108,7 +109,7 @@ jobs:
             # api.goldetech.com is not touched.
             for enabled in /etc/nginx/sites-enabled/*; do
               [ -e "$enabled" ] || continue
-              if sudo grep -Eo 'server_name[^;]*;' "$enabled" 2>/dev/null | grep -Eq '(^|[[:space:]])(goldetech\\.com|www\\.goldetech\\.com)([[:space:];]|$)'; then
+              if sudo grep -Eo 'server_name[^;]*;' "$enabled" 2>/dev/null | grep -Eq '(^|[[:space:]])(goldetech\.com|www\.goldetech\.com)([[:space:];]|$)'; then
                 if [ "$enabled" != "/etc/nginx/sites-enabled/golde-portal" ]; then
                   sudo rm -f "$enabled"
                 fi
