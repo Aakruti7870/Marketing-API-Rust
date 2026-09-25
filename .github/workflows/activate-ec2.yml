@@ -5,6 +5,7 @@ on:
 
 jobs:
   activate:
+    name: Activate Production Service
     runs-on: ubuntu-latest
     steps:
       - name: Checkout exact activation revision
@@ -13,20 +14,28 @@ jobs:
           ref: ${{ github.sha }}
           fetch-depth: 1
 
-      - name: Verify installer certificate paths
+      - name: Verify repository installer and nginx configuration
         shell: bash
         run: |
           set -euo pipefail
           test -s deploy/install-ec2.sh
-          grep -Fq '/etc/letsencrypt/live/api.goldetech.com/fullchain.pem' deploy/install-ec2.sh
-          grep -Fq '/etc/letsencrypt/live/api.goldetech.com/privkey.pem' deploy/install-ec2.sh
-          if grep -Fq 'api.goldetech.com-api' deploy/install-ec2.sh; then
-            echo "ERROR: stale api.goldetech.com-api certificate path detected in repository installer" >&2
+          test -s deploy/nginx.conf
+
+          echo "==> Verifying that no obsolete certificate references exist..."
+          if grep -rn 'api.goldetech.com-api' deploy/; then
+            echo "ERROR: obsolete api.goldetech.com-api reference found in deploy directory" >&2
             exit 1
           fi
-          echo "Installer verified from commit: ${{ github.sha }}"
 
-      - name: Upload and activate production service
+          echo "==> Verifying expected certificate paths in installer and nginx configuration..."
+          grep -Fq '/etc/letsencrypt/live/api.goldetech.com/fullchain.pem' deploy/install-ec2.sh
+          grep -Fq '/etc/letsencrypt/live/api.goldetech.com/privkey.pem' deploy/install-ec2.sh
+          grep -Fq '/etc/letsencrypt/live/api.goldetech.com/fullchain.pem' deploy/nginx.conf
+          grep -Fq '/etc/letsencrypt/live/api.goldetech.com/privkey.pem' deploy/nginx.conf
+
+          echo "Verified installer and configuration for commit: ${{ github.sha }}"
+
+      - name: Verify EC2 host and certificates before execution
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.EC2_HOST }}
@@ -34,12 +43,19 @@ jobs:
           key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
           port: 22
           timeout: 30s
-          command_timeout: 10m
+          command_timeout: 5m
           script: |
             set -euo pipefail
-            rm -f /tmp/install-ec2.sh
+            echo "==> Verifying existing Let's Encrypt certificate on EC2..."
+            sudo test -s /etc/letsencrypt/live/api.goldetech.com/fullchain.pem
+            sudo test -s /etc/letsencrypt/live/api.goldetech.com/privkey.pem
+            sudo openssl x509 -in /etc/letsencrypt/live/api.goldetech.com/fullchain.pem -noout -checkhost api.goldetech.com
+            echo "Certificate verified on EC2."
 
-      - name: Copy verified installer to EC2
+            echo "==> Cleaning up previous installer paths..."
+            rm -rf /tmp/install-ec2.sh /tmp/deploy/install-ec2.sh
+
+      - name: Transfer verified installer to EC2
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.EC2_HOST }}
@@ -48,9 +64,10 @@ jobs:
           port: 22
           source: "deploy/install-ec2.sh"
           target: "/tmp/"
+          strip_components: 1
           overwrite: true
 
-      - name: Execute verified installer
+      - name: Execute verified installer on EC2
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.EC2_HOST }}
@@ -61,12 +78,19 @@ jobs:
           command_timeout: 10m
           script: |
             set -euo pipefail
+            if [ ! -s /tmp/install-ec2.sh ] && [ -s /tmp/deploy/install-ec2.sh ]; then
+              cp /tmp/deploy/install-ec2.sh /tmp/install-ec2.sh
+            fi
+
             test -s /tmp/install-ec2.sh
+            echo "==> Verifying transferred installer on EC2..."
             if grep -Fq 'api.goldetech.com-api' /tmp/install-ec2.sh; then
-              echo "ERROR: stale installer reached EC2" >&2
+              echo "ERROR: obsolete api.goldetech.com-api reference found in transferred installer" >&2
               exit 1
             fi
             grep -Fq '/etc/letsencrypt/live/api.goldetech.com/fullchain.pem' /tmp/install-ec2.sh
             grep -Fq '/etc/letsencrypt/live/api.goldetech.com/privkey.pem' /tmp/install-ec2.sh
+
+            echo "==> Running verified installer..."
             chmod +x /tmp/install-ec2.sh
             /tmp/install-ec2.sh
