@@ -14,7 +14,6 @@ use axum::{routing::get, Json, Router};
 use serde_json::json;
 
 pub fn create_api_router(state: AppState) -> Router {
-    let automation_state = state.clone();
     Router::new()
         .route("/health", get(health_check))
         .nest("/api/v1/auth", auth::routes(state.clone()))
@@ -25,9 +24,10 @@ pub fn create_api_router(state: AppState) -> Router {
         .nest("/api/v1/agents", agents::routes(state.clone()))
         .nest("/api/v1/analytics", analytics::routes(state.clone()))
         .nest("/api/v1/webhooks", webhooks::routes(state.clone()))
-        .nest("/api/v1/automations", automations::routes(state.clone()))
-        .route("/api/v1/automation-webhooks/:id", axum::routing::post(automation_webhooks::handle))
-        .with_state(automation_state)
+.nest("/api/v1/automations", automations::routes(state.clone()))
+        .nest("/api/v1/automation-webhooks", axum::Router::new()
+            .route("/:id", axum::routing::post(automation_webhooks::handle))
+            .with_state(state.clone()))
 }
 
 async fn health_check() -> Json<serde_json::Value> {
