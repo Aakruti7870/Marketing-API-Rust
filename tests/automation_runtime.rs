@@ -60,6 +60,22 @@ async fn create_test_tenant(pool: &sqlx::PgPool) -> (Uuid, Uuid) {
 }
 
 async fn cleanup(pool: &sqlx::PgPool, user_id: Uuid) {
+    let workspace_ids: Vec<Uuid> = sqlx::query_scalar(
+        "SELECT id FROM workspaces WHERE owner_id=$1 AND name='__automation_runtime_test__'",
+    )
+    .bind(user_id)
+    .fetch_all(pool)
+    .await
+    .expect("find test workspaces");
+
+    for workspace_id in workspace_ids {
+        sqlx::query("DELETE FROM workspaces WHERE id=$1")
+            .bind(workspace_id)
+            .execute(pool)
+            .await
+            .expect("cleanup test workspace");
+    }
+
     sqlx::query("DELETE FROM users WHERE id=$1")
         .bind(user_id)
         .execute(pool)
