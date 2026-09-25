@@ -108,7 +108,7 @@ jobs:
             # api.goldetech.com is not touched.
             for enabled in /etc/nginx/sites-enabled/*; do
               [ -e "$enabled" ] || continue
-              if sudo grep -Eq 'server_name[[:space:]].*(goldetech\\.com|www\\.goldetech\\.com)' "$enabled" 2>/dev/null; then
+              if sudo grep -Eo 'server_name[^;]*;' "$enabled" 2>/dev/null | grep -Eq '(^|[[:space:]])(goldetech\\.com|www\\.goldetech\\.com)([[:space:];]|$)'; then
                 if [ "$enabled" != "/etc/nginx/sites-enabled/golde-portal" ]; then
                   sudo rm -f "$enabled"
                 fi
