@@ -71,4 +71,6 @@ export const automationsApi = {
   run: (id, payload = {}) => api.post(`/automations/${id}/run`, payload),
   runs: (id) => api.get(`/automations/${id}/runs`),
   runSteps: (id, runId) => api.get(`/automations/${id}/runs/${runId}/steps`),
+  templates: () => api.get("/automations/templates"),
+  template: (id) => api.get(`/automations/templates/${id}`),
 };
