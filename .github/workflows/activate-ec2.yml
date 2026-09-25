@@ -7,7 +7,26 @@ jobs:
   activate:
     runs-on: ubuntu-latest
     steps:
-      - name: Activate production service
+      - name: Checkout exact activation revision
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+
+      - name: Verify installer certificate paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s deploy/install-ec2.sh
+          grep -Fq '/etc/letsencrypt/live/api.goldetech.com/fullchain.pem' deploy/install-ec2.sh
+          grep -Fq '/etc/letsencrypt/live/api.goldetech.com/privkey.pem' deploy/install-ec2.sh
+          if grep -Fq 'api.goldetech.com-api' deploy/install-ec2.sh; then
+            echo "ERROR: stale api.goldetech.com-api certificate path detected in repository installer" >&2
+            exit 1
+          fi
+          echo "Installer verified from commit: ${{ github.sha }}"
+
+      - name: Upload and activate production service
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.EC2_HOST }}
@@ -18,14 +37,36 @@ jobs:
           command_timeout: 10m
           script: |
             set -euo pipefail
-            INSTALL_URL="https://raw.githubusercontent.com/Aakruti7870/Marketing-API-Rust/main/deploy/install-ec2.sh?cachebust=$(date +%s)"
-            curl -fsSL "$INSTALL_URL" -o /tmp/install-ec2.sh
+            rm -f /tmp/install-ec2.sh
+
+      - name: Copy verified installer to EC2
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+          port: 22
+          source: "deploy/install-ec2.sh"
+          target: "/tmp/"
+          overwrite: true
+
+      - name: Execute verified installer
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+          port: 22
+          timeout: 30s
+          command_timeout: 10m
+          script: |
+            set -euo pipefail
             test -s /tmp/install-ec2.sh
-            grep -Fq '/etc/letsencrypt/live/api.goldetech.com/fullchain.pem' /tmp/install-ec2.sh
-            grep -Fq '/etc/letsencrypt/live/api.goldetech.com/privkey.pem' /tmp/install-ec2.sh
             if grep -Fq 'api.goldetech.com-api' /tmp/install-ec2.sh; then
-              echo "ERROR: stale api.goldetech.com-api certificate path detected in installer" >&2
+              echo "ERROR: stale installer reached EC2" >&2
               exit 1
             fi
+            grep -Fq '/etc/letsencrypt/live/api.goldetech.com/fullchain.pem' /tmp/install-ec2.sh
+            grep -Fq '/etc/letsencrypt/live/api.goldetech.com/privkey.pem' /tmp/install-ec2.sh
             chmod +x /tmp/install-ec2.sh
             /tmp/install-ec2.sh
