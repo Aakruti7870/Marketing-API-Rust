@@ -131,12 +131,13 @@ sudo ufw allow OpenSSH || true
 sudo ufw allow 'Nginx Full' || true
 sudo ufw --force enable || true
 
-CERT_FILE=/etc/letsencrypt/live/api.goldetech.com/fullchain.pem
-KEY_FILE=/etc/letsencrypt/live/api.goldetech.com/privkey.pem
+CERT_NAME=api.goldetech.com-api
+CERT_FILE=/etc/letsencrypt/live/$CERT_NAME/fullchain.pem
+KEY_FILE=/etc/letsencrypt/live/$CERT_NAME/privkey.pem
 
 if [ ! -s "$CERT_FILE" ] || ! sudo openssl x509 -in "$CERT_FILE" -noout -checkhost api.goldetech.com >/dev/null 2>&1; then
   echo "==> Obtaining a certificate that matches api.goldetech.com..."
-  sudo certbot certonly --nginx --non-interactive --agree-tos --register-unsafely-without-email --force-renewal -d api.goldetech.com
+  sudo certbot certonly --nginx --non-interactive --agree-tos --register-unsafely-without-email --force-renewal --cert-name "$CERT_NAME" -d api.goldetech.com
 fi
 
 sudo test -s "$CERT_FILE"
@@ -166,8 +167,8 @@ server {
     listen 443 ssl;
     server_name api.goldetech.com;
 
-    ssl_certificate /etc/letsencrypt/live/api.goldetech.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/api.goldetech.com/privkey.pem;
+    ssl_certificate /etc/letsencrypt/live/api.goldetech.com-api/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/api.goldetech.com-api/privkey.pem;
     ssl_protocols TLSv1.2 TLSv1.3;
 
     add_header X-Frame-Options "DENY" always;
