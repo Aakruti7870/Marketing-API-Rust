@@ -41,7 +41,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let mut interval = tokio::time::interval(std::time::Duration::from_secs(10));
         loop {
             interval.tick().await;
-            if let Err(e) = crate::services::automation_service::scheduler_tick(&scheduler_state).await {
+            if let Err(e) = golde_marketing_api::services::automation_service::scheduler_tick(&scheduler_state).await {
                 tracing::error!("Automation scheduler tick failed: {}", e);
             }
         }
