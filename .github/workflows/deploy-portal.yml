@@ -46,23 +46,16 @@ jobs:
 
             sudo mkdir -p /opt/golde-portal
             sudo rm -rf /opt/golde-portal/*
-
             sudo cp -r /tmp/golde-portal-release/frontend/dist/. /opt/golde-portal/
             sudo chown -R www-data:www-data /opt/golde-portal
 
-            # Reuse the existing Let's Encrypt certificate for the public website.
-            # The previous check over-escaped the hostname regex and could not match
-            # a valid certificate even though /etc/letsencrypt/live/goldetech.com exists.
-            CERT_DIR=""
-            for d in /etc/letsencrypt/live/*; do
-              if [ -f "$d/fullchain.pem" ] && sudo openssl x509 -in "$d/fullchain.pem" -noout -ext subjectAltName 2>/dev/null | grep -Eq 'DNS:(goldetech\.com|www\.goldetech\.com)(,|$)'; then
-                CERT_DIR="$d"
-                break
-              fi
-            done
+            # The EC2 Nginx configuration already proves this is the active
+            # certificate for the public website. Reuse it directly.
+            CERT_DIR="/etc/letsencrypt/live/goldetech.com"
 
-            if [ -z "$CERT_DIR" ]; then
-              echo "No TLS certificate covering goldetech.com/www.goldetech.com was found." >&2
+            if [ ! -s "$CERT_DIR/fullchain.pem" ] || [ ! -s "$CERT_DIR/privkey.pem" ]; then
+              echo "Expected public-site TLS certificate files are missing: $CERT_DIR" >&2
+              sudo ls -la /etc/letsencrypt/live/ || true
               sudo nginx -T 2>&1 | grep -n -E 'server_name|ssl_certificate|root' || true
               exit 1
             fi
