@@ -18,7 +18,14 @@ jobs:
           command_timeout: 10m
           script: |
             set -euo pipefail
-            curl -fsSL "https://raw.githubusercontent.com/Aakruti7870/Marketing-API-Rust/main/deploy/install-ec2.sh" -o /tmp/install-ec2.sh
+            INSTALL_URL="https://raw.githubusercontent.com/Aakruti7870/Marketing-API-Rust/main/deploy/install-ec2.sh?cachebust=$(date +%s)"
+            curl -fsSL "$INSTALL_URL" -o /tmp/install-ec2.sh
             test -s /tmp/install-ec2.sh
+            grep -Fq '/etc/letsencrypt/live/api.goldetech.com/fullchain.pem' /tmp/install-ec2.sh
+            grep -Fq '/etc/letsencrypt/live/api.goldetech.com/privkey.pem' /tmp/install-ec2.sh
+            if grep -Fq 'api.goldetech.com-api' /tmp/install-ec2.sh; then
+              echo "ERROR: stale api.goldetech.com-api certificate path detected in installer" >&2
+              exit 1
+            fi
             chmod +x /tmp/install-ec2.sh
             /tmp/install-ec2.sh
