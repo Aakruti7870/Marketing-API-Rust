@@ -131,6 +131,62 @@ sudo ufw allow OpenSSH || true
 sudo ufw allow 'Nginx Full' || true
 sudo ufw --force enable || true
 
-sudo certbot --nginx --non-interactive --agree-tos --register-unsafely-without-email --redirect --force-renewal -d api.goldetech.com
+CERT_FILE=/etc/letsencrypt/live/api.goldetech.com/fullchain.pem
+KEY_FILE=/etc/letsencrypt/live/api.goldetech.com/privkey.pem
+
+if [ ! -s "$CERT_FILE" ] || ! sudo openssl x509 -in "$CERT_FILE" -noout -checkhost api.goldetech.com >/dev/null 2>&1; then
+  echo "==> Obtaining a certificate that matches api.goldetech.com..."
+  sudo certbot certonly --nginx --non-interactive --agree-tos --register-unsafely-without-email --force-renewal -d api.goldetech.com
+fi
+
+sudo test -s "$CERT_FILE"
+sudo test -s "$KEY_FILE"
+sudo openssl x509 -in "$CERT_FILE" -noout -checkhost api.goldetech.com
+
+sudo tee "$NGINX_FILE" >/dev/null <<'EOF'
+upstream golde_backend {
+    server 127.0.0.1:4000;
+    keepalive 64;
+}
+
+server {
+    listen 80;
+    server_name api.goldetech.com;
+
+    location /.well-known/acme-challenge/ {
+        root /var/www/html;
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+server {
+    listen 443 ssl;
+    server_name api.goldetech.com;
+
+    ssl_certificate /etc/letsencrypt/live/api.goldetech.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/api.goldetech.com/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+
+    add_header X-Frame-Options "DENY" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+
+    location / {
+        proxy_pass http://golde_backend;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_read_timeout 60s;
+    }
+}
+EOF
+
+sudo nginx -t
+sudo systemctl reload nginx
 
 curl -fsS https://api.goldetech.com/health
