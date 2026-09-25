@@ -1,0 +1,246 @@
+name: Production E2E Smoke Test
+
+on:
+  workflow_run:
+    workflows: ["Deploy to AWS EC2 Production"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke-test:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    env:
+      BASE_URL: https://api.goldetech.com
+      SMOKE_EMAIL: ${{ secrets.SMOKE_TEST_EMAIL }}
+      SMOKE_PASSWORD: ${{ secrets.SMOKE_TEST_PASSWORD }}
+
+    steps:
+      - name: Validate smoke-test credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${SMOKE_EMAIL}" || -z "${SMOKE_PASSWORD}" ]]; then
+            echo "::error::Missing SMOKE_TEST_EMAIL or SMOKE_TEST_PASSWORD repository secrets."
+            echo "Create a dedicated production smoke-test account and store its credentials as GitHub Actions secrets."
+            exit 1
+          fi
+
+      - name: Check production health
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --retry 3 --retry-delay 2 \
+            "${BASE_URL}/health" | tee health.json
+          jq -e '.status == "healthy" and .service == "GOLD-e GrowthOS Marketing API"' health.json >/dev/null
+
+      - name: Login
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error \
+            -H "Content-Type: application/json" \
+            -d "$(jq -n --arg email "${SMOKE_EMAIL}" --arg password "${SMOKE_PASSWORD}" \
+              '{email:$email,password:$password}')" \
+            "${BASE_URL}/api/v1/auth/login" > login.json
+
+          jq -e '.success == true and (.data.tokens.access_token | type == "string") and (.data.workspace_id | type == "string")' login.json >/dev/null
+          ACCESS_TOKEN="$(jq -r '.data.tokens.access_token' login.json)"
+          WORKSPACE_ID="$(jq -r '.data.workspace_id' login.json)"
+          echo "::add-mask::${ACCESS_TOKEN}"
+          echo "ACCESS_TOKEN=${ACCESS_TOKEN}" >> "${GITHUB_ENV}"
+          echo "WORKSPACE_ID=${WORKSPACE_ID}" >> "${GITHUB_ENV}"
+
+      - name: Verify authenticated workspace
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error \
+            -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+            -H "x-workspace-id: ${WORKSPACE_ID}" \
+            "${BASE_URL}/api/v1/workspaces/current" > workspace.json
+          jq -e '.success == true and (.data.id | type == "string")' workspace.json >/dev/null
+
+      - name: Create and run manual automation
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          jq -n \
+            --arg name "PROD E2E Manual ${GITHUB_RUN_ID}" \
+            '{
+              name:$name,
+              description:"Automated production E2E smoke test",
+              triggers:[{trigger_type:"MANUAL",config:{},enabled:true}],
+              nodes:[
+                {node_key:"trigger",node_type:"MANUAL_TRIGGER",name:"Manual Trigger",config:{},position:{}},
+                {node_key:"set",node_type:"SET",name:"Set Smoke Value",config:{values:{smoke_test:"passed"}},position:{}}
+              ],
+              edges:[{source_node_key:"trigger",target_node_key:"set",config:{}}],
+              schedule:null
+            }' > automation.json
+
+          curl --fail --silent --show-error \
+            -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+            -H "x-workspace-id: ${WORKSPACE_ID}" \
+            -H "Content-Type: application/json" \
+            --data @automation.json \
+            "${BASE_URL}/api/v1/automations/" > automation-create.json
+
+          AUTOMATION_ID="$(jq -r '.data.id' automation-create.json)"
+          test "${AUTOMATION_ID}" != "null"
+          echo "AUTOMATION_ID=${AUTOMATION_ID}" >> "${GITHUB_ENV}"
+
+          curl --fail --silent --show-error \
+            -X POST \
+            -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+            -H "x-workspace-id: ${WORKSPACE_ID}" \
+            "${BASE_URL}/api/v1/automations/${AUTOMATION_ID}/publish" > publish.json
+          jq -e '.success == true and .data.status == "PUBLISHED"' publish.json >/dev/null
+
+          curl --fail --silent --show-error \
+            -X POST \
+            -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+            -H "x-workspace-id: ${WORKSPACE_ID}" \
+            -H "Content-Type: application/json" \
+            -d '{"payload":{"source":"github-smoke-test","expected":"pass"}}' \
+            "${BASE_URL}/api/v1/automations/${AUTOMATION_ID}/run" > run.json
+
+          RUN_ID="$(jq -r '.data.run_id' run.json)"
+          test "${RUN_ID}" != "null"
+          echo "RUN_ID=${RUN_ID}" >> "${GITHUB_ENV}"
+
+          sleep 2
+          curl --fail --silent --show-error \
+            -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+            -H "x-workspace-id: ${WORKSPACE_ID}" \
+            "${BASE_URL}/api/v1/automations/runs/${RUN_ID}" > run-status.json
+
+          jq -e '.success == true and .data.status == "COMPLETED" and (.data.steps | length) == 2' run-status.json >/dev/null
+
+      - name: Test webhook trigger
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          jq -n \
+            --arg name "PROD E2E Webhook ${GITHUB_RUN_ID}" \
+            '{
+              name:$name,
+              description:"Automated production webhook smoke test",
+              triggers:[{trigger_type:"WEBHOOK",config:{},enabled:true}],
+              nodes:[
+                {node_key:"trigger",node_type:"WEBHOOK_TRIGGER",name:"Webhook Trigger",config:{},position:{}},
+                {node_key:"set",node_type:"SET",name:"Set Webhook Value",config:{values:{webhook_test:"passed"}},position:{}}
+              ],
+              edges:[{source_node_key:"trigger",target_node_key:"set",config:{}}],
+              schedule:null
+            }' > webhook-automation.json
+
+          curl --fail --silent --show-error \
+            -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+            -H "x-workspace-id: ${WORKSPACE_ID}" \
+            -H "Content-Type: application/json" \
+            --data @webhook-automation.json \
+            "${BASE_URL}/api/v1/automations/" > webhook-create.json
+
+          WEBHOOK_AUTOMATION_ID="$(jq -r '.data.id' webhook-create.json)"
+          test "${WEBHOOK_AUTOMATION_ID}" != "null"
+
+          curl --fail --silent --show-error \
+            -X POST \
+            -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+            -H "x-workspace-id: ${WORKSPACE_ID}" \
+            "${BASE_URL}/api/v1/automations/${WEBHOOK_AUTOMATION_ID}/publish" > webhook-publish.json
+          jq -e '.success == true and .data.status == "PUBLISHED"' webhook-publish.json >/dev/null
+
+          curl --fail --silent --show-error \
+            -X POST \
+            -H "Content-Type: application/json" \
+            -d '{"source":"github-smoke-test","webhook_test":"pass"}' \
+            "${BASE_URL}/api/v1/automation-webhooks/${WEBHOOK_AUTOMATION_ID}" > webhook-run.json
+
+          WEBHOOK_RUN_ID="$(jq -r '.run_id' webhook-run.json)"
+          test "${WEBHOOK_RUN_ID}" != "null"
+
+          sleep 2
+          curl --fail --silent --show-error \
+            -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+            -H "x-workspace-id: ${WORKSPACE_ID}" \
+            "${BASE_URL}/api/v1/automations/runs/${WEBHOOK_RUN_ID}" > webhook-status.json
+
+          jq -e '.success == true and .data.status == "COMPLETED" and (.data.steps | length) == 2' webhook-status.json >/dev/null
+
+      - name: Test approval pause and resume
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          jq -n \
+            --arg name "PROD E2E Approval ${GITHUB_RUN_ID}" \
+            '{
+              name:$name,
+              description:"Automated production approval smoke test",
+              triggers:[{trigger_type:"MANUAL",config:{},enabled:true}],
+              nodes:[
+                {node_key:"trigger",node_type:"MANUAL_TRIGGER",name:"Manual Trigger",config:{},position:{}},
+                {node_key:"approval",node_type:"APPROVAL",name:"Approval Gate",config:{},position:{}},
+                {node_key:"set",node_type:"SET",name:"Post Approval",config:{values:{approval_test:"passed"}},position:{}}
+              ],
+              edges:[
+                {source_node_key:"trigger",target_node_key:"approval",config:{}},
+                {source_node_key:"approval",target_node_key:"set",config:{}}
+              ],
+              schedule:null
+            }' > approval-automation.json
+
+          curl --fail --silent --show-error \
+            -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+            -H "x-workspace-id: ${WORKSPACE_ID}" \
+            -H "Content-Type: application/json" \
+            --data @approval-automation.json \
+            "${BASE_URL}/api/v1/automations/" > approval-create.json
+
+          APPROVAL_AUTOMATION_ID="$(jq -r '.data.id' approval-create.json)"
+          test "${APPROVAL_AUTOMATION_ID}" != "null"
+
+          curl --fail --silent --show-error \
+            -X POST \
+            -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+            -H "x-workspace-id: ${WORKSPACE_ID}" \
+            "${BASE_URL}/api/v1/automations/${APPROVAL_AUTOMATION_ID}/publish" > approval-publish.json
+          jq -e '.success == true and .data.status == "PUBLISHED"' approval-publish.json >/dev/null
+
+          curl --fail --silent --show-error \
+            -X POST \
+            -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+            -H "x-workspace-id: ${WORKSPACE_ID}" \
+            -H "Content-Type: application/json" \
+            -d '{"payload":{"source":"github-smoke-test"}}' \
+            "${BASE_URL}/api/v1/automations/${APPROVAL_AUTOMATION_ID}/run" > approval-run.json
+
+          APPROVAL_RUN_ID="$(jq -r '.data.run_id' approval-run.json)"
+          test "${APPROVAL_RUN_ID}" != "null"
+
+          sleep 1
+          curl --fail --silent --show-error \
+            -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+            -H "x-workspace-id: ${WORKSPACE_ID}" \
+            "${BASE_URL}/api/v1/automations/runs/${APPROVAL_RUN_ID}" > approval-status.json
+
+          jq -e '.success == true and .data.status == "WAITING_APPROVAL"' approval-status.json >/dev/null
+
+          STEP_ID="$(jq -r '.data.steps[] | select(.node_type == "APPROVAL") | .node_key' approval-status.json)"
+          test -n "${STEP_ID}" && test "${STEP_ID}" != "null"
+
+          # The current API does not expose step UUIDs in get_run, so fetch the
+          # run via the DB-backed API contract is not sufficient to approve here.
+          # Fail explicitly rather than guessing a UUID.
+          echo "::error::Approval E2E reached WAITING_APPROVAL, but the current GET run response exposes node_key rather than step_id. Approval resume requires the step UUID."
+          exit 1
