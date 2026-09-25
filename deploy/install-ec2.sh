@@ -13,7 +13,7 @@ if ! id golde >/dev/null 2>&1; then
   sudo useradd --system --home "$APP_DIR" --shell /usr/sbin/nologin golde
 fi
 
-sudo mkdir -p "$APP_DIR/bin" "$APP_DIR/migrations" /var/log/golde-marketing-api
+sudo mkdir -p "$APP_DIR/bin" "$APP_DIR/migrations" /var/log/golde-marketing-api /var/www/html/.well-known/acme-challenge
 sudo systemctl stop golde-marketing-api.service 2>/dev/null || true
 BINARY_PATH=$(find "$RELEASE_DIR" -type f -name golde-marketing-api -print -quit)
 if [ -z "$BINARY_PATH" ]; then
@@ -135,10 +135,12 @@ CERT_NAME=api.goldetech.com-api
 CERT_FILE=/etc/letsencrypt/live/$CERT_NAME/fullchain.pem
 KEY_FILE=/etc/letsencrypt/live/$CERT_NAME/privkey.pem
 
-if [ ! -s "$CERT_FILE" ] || ! sudo openssl x509 -in "$CERT_FILE" -noout -checkhost api.goldetech.com >/dev/null 2>&1; then
-  echo "==> Obtaining a certificate that matches api.goldetech.com..."
-  sudo certbot certonly --nginx --non-interactive --agree-tos --register-unsafely-without-email --force-renewal --cert-name "$CERT_NAME" -d api.goldetech.com
-fi
+echo "==> Ensuring dedicated certificate for api.goldetech.com..."
+sudo certbot certonly --webroot -w /var/www/html --non-interactive --agree-tos --register-unsafely-without-email --keep-until-expiring --cert-name "$CERT_NAME" -d api.goldetech.com
+
+sudo test -s "$CERT_FILE"
+sudo test -s "$KEY_FILE"
+sudo openssl x509 -in "$CERT_FILE" -noout -checkhost api.goldetech.com
 
 sudo test -s "$CERT_FILE"
 sudo test -s "$KEY_FILE"
