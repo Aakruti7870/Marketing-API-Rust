@@ -20,7 +20,7 @@ jobs:
 
       - name: Install frontend dependencies
         working-directory: frontend
-        run: npm ci
+        run: npm install --no-audit --no-fund
 
       - name: Build GOLD-e GrowthOS Portal
         working-directory: frontend
@@ -117,14 +117,12 @@ jobs:
 
             sudo ln -sfn "$PORTAL_NGINX" /etc/nginx/sites-enabled/golde-portal
 
-            # Confirm the deployed files are present before reloading Nginx.
             test -s /opt/golde-portal/index.html
             grep -q 'GOLD-e' /opt/golde-portal/index.html
 
             sudo nginx -t
             sudo systemctl reload nginx
 
-            # Verify the HTTPS vhost and the public endpoint.
             curl -fsS --resolve goldetech.com:443:127.0.0.1 https://goldetech.com/ | grep -q 'GOLD-e'
             curl -fsS https://goldetech.com/ | grep -q 'GOLD-e'
 
