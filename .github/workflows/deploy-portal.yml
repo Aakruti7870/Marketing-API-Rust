@@ -50,18 +50,82 @@ jobs:
             sudo cp -r /tmp/golde-portal-release/frontend/dist/. /opt/golde-portal/
             sudo chown -R www-data:www-data /opt/golde-portal
 
-            PORTAL_NGINX="/etc/nginx/sites-available/golde-portal"
+            # GOLD-e GrowthOS must be the HTTPS virtual host for the public website.
+            # Discover the existing Let's Encrypt certificate covering the public domains.
+            CERT_DIR=""
+            for d in /etc/letsencrypt/live/*; do
+              if [ -f "$d/fullchain.pem" ] && sudo openssl x509 -in "$d/fullchain.pem" -noout -ext subjectAltName 2>/dev/null | grep -Eq 'DNS:(goldetech\\.com|www\\.goldetech\\.com)(,|$)'; then
+                CERT_DIR="$d"
+                break
+              fi
+            done
 
-            if [ ! -f "$PORTAL_NGINX" ]; then
-              echo "Portal Nginx configuration not found: $PORTAL_NGINX" >&2
+            if [ -z "$CERT_DIR" ]; then
+              echo "No TLS certificate covering goldetech.com/www.goldetech.com was found." >&2
+              sudo nginx -T 2>&1 | grep -n -E 'server_name|ssl_certificate|root' || true
               exit 1
             fi
 
-            sudo sed -i 's#proxy_pass http://127\.0\.0\.1:4000/api/v1/;#proxy_pass http://127.0.0.1:4000;#' "$PORTAL_NGINX"
+            PORTAL_NGINX="/etc/nginx/sites-available/golde-portal"
+            sudo tee "$PORTAL_NGINX" >/dev/null <<NGINX
+            server {
+              listen 80;
+              listen [::]:80;
+              server_name goldetech.com www.goldetech.com;
+              return 301 https://goldetech.com\$request_uri;
+            }
+
+            server {
+              listen 443 ssl http2;
+              listen [::]:443 ssl http2;
+              server_name goldetech.com www.goldetech.com;
+
+              root /opt/golde-portal;
+              index index.html;
+
+              ssl_certificate $CERT_DIR/fullchain.pem;
+              ssl_certificate_key $CERT_DIR/privkey.pem;
+
+              location / {
+                try_files \$uri \$uri/ /index.html;
+              }
+
+              location = /index.html {
+                add_header Cache-Control "no-store, no-cache, must-revalidate, proxy-revalidate" always;
+                expires -1;
+                try_files \$uri =404;
+              }
+
+              location = /sw.js {
+                add_header Cache-Control "no-store, no-cache, must-revalidate" always;
+                expires -1;
+                try_files \$uri =404;
+              }
+            }
+            NGINX
+
+            # Remove enabled vhosts for the public website domains only.
+            # api.goldetech.com is not touched.
+            for enabled in /etc/nginx/sites-enabled/*; do
+              [ -e "$enabled" ] || continue
+              if sudo grep -Eq 'server_name[[:space:]].*(goldetech\\.com|www\\.goldetech\\.com)' "$enabled" 2>/dev/null; then
+                if [ "$enabled" != "/etc/nginx/sites-enabled/golde-portal" ]; then
+                  sudo rm -f "$enabled"
+                fi
+              fi
+            done
+
+            sudo ln -sfn "$PORTAL_NGINX" /etc/nginx/sites-enabled/golde-portal
+
+            # Confirm the deployed files are present before reloading Nginx.
+            test -s /opt/golde-portal/index.html
+            grep -q 'GOLD-e' /opt/golde-portal/index.html
 
             sudo nginx -t
             sudo systemctl reload nginx
 
-            curl -fsS -H 'Host: goldetech.com' http://127.0.0.1/ >/dev/null
+            # Verify the HTTPS vhost and the public endpoint.
+            curl -fsS --resolve goldetech.com:443:127.0.0.1 https://goldetech.com/ | grep -q 'GOLD-e'
+            curl -fsS https://goldetech.com/ | grep -q 'GOLD-e'
 
             echo "GOLD_E_GROWTHOS_PORTAL_DEPLOY_OK"
