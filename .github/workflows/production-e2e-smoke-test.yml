@@ -91,7 +91,7 @@ jobs:
             -H "x-workspace-id: ${WORKSPACE_ID}" \
             -H "Content-Type: application/json" \
             --data @automation.json \
-            "${BASE_URL}/api/v1/automations/" > automation-create.json
+            "${BASE_URL}/api/v1/automations" > automation-create.json
 
           AUTOMATION_ID="$(jq -r '.data.id' automation-create.json)"
           test "${AUTOMATION_ID}" != "null"
@@ -148,7 +148,7 @@ jobs:
             -H "x-workspace-id: ${WORKSPACE_ID}" \
             -H "Content-Type: application/json" \
             --data @webhook-automation.json \
-            "${BASE_URL}/api/v1/automations/" > webhook-create.json
+            "${BASE_URL}/api/v1/automations" > webhook-create.json
 
           WEBHOOK_AUTOMATION_ID="$(jq -r '.data.id' webhook-create.json)"
           test "${WEBHOOK_AUTOMATION_ID}" != "null"
@@ -205,7 +205,7 @@ jobs:
             -H "x-workspace-id: ${WORKSPACE_ID}" \
             -H "Content-Type: application/json" \
             --data @approval-automation.json \
-            "${BASE_URL}/api/v1/automations/" > approval-create.json
+            "${BASE_URL}/api/v1/automations" > approval-create.json
 
           APPROVAL_AUTOMATION_ID="$(jq -r '.data.id' approval-create.json)"
           test "${APPROVAL_AUTOMATION_ID}" != "null"
