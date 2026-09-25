@@ -1,8 +1,6 @@
 name: Activate EC2 Now
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 jobs:

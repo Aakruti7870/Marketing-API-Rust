@@ -42,6 +42,18 @@ impl Config {
         let jwt_refresh_secret = env::var("JWT_REFRESH_SECRET")
             .unwrap_or_else(|_| "default_super_secret_refresh_key_987654321".to_string());
 
+        if environment.eq_ignore_ascii_case("production") {
+            if jwt_access_secret == "default_super_secret_access_key_123456789" {
+                return Err("JWT_ACCESS_SECRET must be configured with a secure value in production".to_string());
+            }
+            if jwt_refresh_secret == "default_super_secret_refresh_key_987654321" {
+                return Err("JWT_REFRESH_SECRET must be configured with a secure value in production".to_string());
+            }
+            if database_url.is_empty() || database_url == "postgresql://golde:password@localhost:5432/marketing_api?sslmode=disable" {
+                return Err("DATABASE_URL must be configured with a production database in production".to_string());
+            }
+        }
+
         let jwt_access_expiration_seconds = env::var("JWT_ACCESS_EXPIRATION_SECONDS")
             .unwrap_or_else(|_| "900".to_string())
             .parse::<i64>()

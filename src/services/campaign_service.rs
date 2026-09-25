@@ -161,11 +161,11 @@ pub async fn launch_campaign(
         .await
         {
             let _ = sqlx::query!(
-                "INSERT INTO messages (
-                    id, workspace_id, campaign_id, contact_id, channel, direction,
-                    external_message_id, status, content, template_name, sent_at
-                 )
-                 VALUES ($1, $2, $3, $4, 'WHATSAPP', 'OUTBOUND', $5, $6, $7, $8, NOW())
+                "INSERT INTO messages (\
+                    id, workspace_id, campaign_id, contact_id, channel, direction,\
+                    external_message_id, status, content, template_name, sent_at\
+                 )\
+                 VALUES ($1, $2, $3, $4, 'WHATSAPP', 'OUTBOUND', $5, $6, $7, $8, NOW())\
                  ON CONFLICT (external_message_id) DO NOTHING",
                 Uuid::new_v4(),
                 workspace_id,
@@ -182,9 +182,10 @@ pub async fn launch_campaign(
     }
 
     let updated = sqlx::query_as::<_, Campaign>(
-        "UPDATE campaigns SET status = 'RUNNING', updated_at = NOW() WHERE id = $1 RETURNING *"
+        "UPDATE campaigns SET status = 'RUNNING', updated_at = NOW() WHERE id = $1 AND workspace_id = $2 RETURNING *"
     )
     .bind(campaign_id)
+    .bind(workspace_id)
     .fetch_one(pool)
     .await?;
 

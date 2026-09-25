@@ -22,7 +22,7 @@ pub async fn send_whatsapp_message(
 ) -> Result<WhatsAppSendResult, AppError> {
     // 1. Check if Simulation Mode is enabled or Meta credentials are absent
     let has_credentials = config.whatsapp_phone_number_id.is_some() && config.whatsapp_access_token.is_some();
-    if config.whatsapp_simulation_mode || !has_credentials {
+    if config.whatsapp_simulation_mode {
         let simulated_wamid = format!(
             "wamid.HBgL{}FQIAERgS{}",
             to_phone.replace('+', ""),
@@ -39,6 +39,10 @@ pub async fn send_whatsapp_message(
             status: "SENT".to_string(),
             simulated: true,
         });
+    }
+
+    if !has_credentials {
+        return Err(AppError::BadRequest("WhatsApp credentials (WHATSAPP_PHONE_NUMBER_ID, WHATSAPP_ACCESS_TOKEN) are required when simulation mode is disabled".to_string()));
     }
 
     // 2. Real WhatsApp Cloud API Call via Meta Graph API
