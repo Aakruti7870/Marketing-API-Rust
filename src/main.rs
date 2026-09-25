@@ -33,7 +33,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // 4. Create App State and Router
     let state = AppState::new(pool, config.clone());
-    let router = app(state);
+    let router = app(state.clone());
+
+    // Native automation scheduler: durable schedules are stored in PostgreSQL.
+    let scheduler_state = state.clone();
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(10));
+        loop {
+            interval.tick().await;
+            if let Err(e) = crate::services::automation_service::scheduler_tick(&scheduler_state).await {
+                tracing::error!("Automation scheduler tick failed: {}", e);
+            }
+        }
+    });
 
     // 5. Start HTTP Server
     let addr: SocketAddr = format!("{}:{}", config.host, config.port).parse()?;
