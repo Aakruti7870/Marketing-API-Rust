@@ -239,19 +239,12 @@ jobs:
           STEP_ID="$(jq -r '.data.steps[] | select(.node_type == "APPROVAL") | .id' approval-status.json)"
           test -n "${STEP_ID}" && test "${STEP_ID}" != "null"
 
-          curl --fail --silent --show-error \
-            -X POST \
-            -H "Authorization: Bearer ${ACCESS_TOKEN}" \
-            -H "x-workspace-id: ${WORKSPACE_ID}" \
-            "${BASE_URL}/api/v1/automations/runs/${APPROVAL_RUN_ID}/steps/${STEP_ID}/approve" > approval-result.json
+          curl --fail --silent --show-error -X POST -H "Authorization: Bearer ${ACCESS_TOKEN}" -H "x-workspace-id: ${WORKSPACE_ID}" "${BASE_URL}/api/v1/automations/runs/${APPROVAL_RUN_ID}/steps/${STEP_ID}/approve" > approval-result.json
 
           jq -e '.success == true and .data.approved == true' approval-result.json >/dev/null
 
           sleep 1
-          curl --fail --silent --show-error \
-            -H "Authorization: Bearer ${ACCESS_TOKEN}" \
-            -H "x-workspace-id: ${WORKSPACE_ID}" \
-            "${BASE_URL}/api/v1/automations/runs/${APPROVAL_RUN_ID}" > approval-completed.json
+          curl --fail --silent --show-error -H "Authorization: Bearer ${ACCESS_TOKEN}" -H "x-workspace-id: ${WORKSPACE_ID}" "${BASE_URL}/api/v1/automations/runs/${APPROVAL_RUN_ID}" > approval-completed.json
 
           jq -e '.success == true and .data.status == "COMPLETED" and (.data.steps | length) == 3' approval-completed.json >/dev/null
           echo "Production automation E2E smoke test PASSED."
