@@ -120,7 +120,7 @@ async fn execute_run(state:&AppState, run_id:Uuid, automation_id:Uuid, payload:V
             Ok(out)=>{
                 vars=merge(vars,out.clone());
                 sqlx::query("UPDATE automation_run_steps SET status='COMPLETED',output=$1,completed_at=NOW() WHERE id=$2").bind(out).bind(step_id).execute(&state.pool).await?;
-                sqlx::query("INSERT INTO automation_logs(run_id,node_key,message,metadata) VALUES($1,$2,$3,$4)").bind(run_id,&key,"Node completed",json!({"node_type":typ})).execute(&state.pool).await?;
+                sqlx::query("INSERT INTO automation_logs(run_id,node_key,message,metadata) VALUES($1,$2,$3,$4)").bind(run_id).bind(&key).bind("Node completed").bind(json!({"node_type":typ})).execute(&state.pool).await?;
             }
             Err(e)=>{
                 let msg=e.to_string();
