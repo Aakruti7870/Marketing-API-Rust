@@ -121,6 +121,6 @@ pub fn validate_graph(g:&AutomationGraph)->Result<(),AppError>{
 mod tests {
  use super::*;
  #[test] fn render_resolves_json_paths(){let input=json!({"lead":{"name":"Ada"},"score":42});let v=render(&json!({"message":"Hi {{$json.lead.name}}","score":"{{$json.score}}"}),&input).unwrap();assert_eq!(v["message"],"Hi Ada");assert_eq!(v["score"],"42");}
- #[test] fn graph_rejects_cycles(){let g=AutomationGraph{nodes:vec![AutomationNode{id:"a".into(),node_type:"data.noop".into(),config:json!({})},AutomationNode{id:"b".into(),node_type:"data.noop".into(),config:json!({})}],edges:vec![crate::models::AutomationEdge{source:"a".into(),target:"b".into(),branch:None},crate::models::AutomationEdge{source:"b".into(),target:"a".into(),branch:None}]};assert!(validate_graph(&g).is_err());}
+ #[test] fn graph_rejects_cycles(){let g=AutomationGraph{nodes:vec![AutomationNode{id:"a".into(),name:"A".into(),node_type:"data.noop".into(),config:json!({}),position:[0.0,0.0]},AutomationNode{id:"b".into(),name:"B".into(),node_type:"data.noop".into(),config:json!({}),position:[100.0,0.0]}],edges:vec![crate::models::AutomationEdge{source:"a".into(),target:"b".into(),branch:None},crate::models::AutomationEdge{source:"b".into(),target:"a".into(),branch:None}]};assert!(validate_graph(&g).is_err());}
  #[test] fn schedule_bounds_are_enforced(){assert!(schedule_interval(&json!({"interval_seconds":0})).is_err());assert_eq!(schedule_interval(&json!({"interval_seconds":60})).unwrap(),Some(60));}
 }
