@@ -16,4 +16,3 @@ pub use whatsapp_service::*;
 pub use message_service::*;
 pub use agent_service::*;
 pub use analytics_service::*;
-pub use automation_service::*;
