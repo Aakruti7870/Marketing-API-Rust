@@ -170,8 +170,8 @@ server {
     listen 443 ssl;
     server_name api.goldetech.com;
 
-    ssl_certificate /etc/letsencrypt/live/api.goldetech.com-api/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/api.goldetech.com-api/privkey.pem;
+    ssl_certificate /etc/letsencrypt/live/api.goldetech.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/api.goldetech.com/privkey.pem;
     ssl_protocols TLSv1.2 TLSv1.3;
 
     add_header X-Frame-Options "DENY" always;
