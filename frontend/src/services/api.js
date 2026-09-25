@@ -175,8 +175,11 @@ export const automationsApi = {
   list: () => api.get("/automations"),
   create: (payload) => api.post("/automations", payload),
   publish: (id) => api.post(`/automations/${id}/publish`),
+  activate: (id) => api.post(`/automations/${id}/publish`), // alias for UI compatibility
+  pause: (id) => api.post(`/automations/${id}/pause`),
   run: (id, payload = {}) => api.post(`/automations/${id}/run`, payload),
   getRun: (runId) => api.get(`/automations/runs/${runId}`),
+  runs: (runId) => api.get(`/automations/runs/${runId}`), // alias
   approveStep: (runId, stepId) => api.post(`/automations/runs/${runId}/steps/${stepId}/approve`),
 };
 
