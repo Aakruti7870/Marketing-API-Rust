@@ -131,8 +131,6 @@ sudo ufw allow OpenSSH || true
 sudo ufw allow 'Nginx Full' || true
 sudo ufw --force enable || true
 
-if ! sudo certbot certificates 2>/dev/null | grep -q 'api.goldetech.com'; then
-  sudo certbot --nginx --non-interactive --agree-tos --register-unsafely-without-email --redirect -d api.goldetech.com
-fi
+sudo certbot --nginx --non-interactive --agree-tos --register-unsafely-without-email --redirect --force-renewal -d api.goldetech.com
 
 curl -fsS https://api.goldetech.com/health
