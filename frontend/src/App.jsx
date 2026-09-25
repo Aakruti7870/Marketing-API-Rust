@@ -1,0 +1,454 @@
+import { useEffect, useMemo, useState } from "react";
+import {
+  Activity, ArrowRight, BarChart3, Bot, Check, ChevronDown, ChevronLeft, ChevronRight, CircleHelp,
+  Command, ContactRound, LayoutDashboard, LogOut, Menu, MessageSquare,
+  Pause, Play, Plus, Rocket, Search, Settings, Sparkles, Target, Users, X, Zap
+} from "lucide-react";
+import { authApi, dashboardApi, workspaceApi, agentsApi, campaignsApi, contactsApi, messagesApi, automationsApi, unwrap } from "./services/api";
+import "./App.css";
+
+const NAV = [
+  { id:"dashboard", label:"Command Center", icon:LayoutDashboard },
+  { id:"contacts", label:"Contacts", icon:ContactRound },
+  { id:"campaigns", label:"Campaigns", icon:Target },
+  { id:"messages", label:"WhatsApp", icon:MessageSquare },
+  { id:"agents", label:"AI Agents", icon:Bot },
+  { id:"automations", label:"Automations", icon:Zap },
+  { id:"analytics", label:"Analytics", icon:BarChart3 },
+  { id:"settings", label:"Settings", icon:Settings },
+];
+
+
+const AI_HEROES = [
+  {title:"AURA 7 · COMMAND INTELLIGENCE",copy:"Turn audience signals into coordinated growth actions.",image:"https://dnznrvs05pmza.cloudfront.net/gemini/gemini-3-pro-image/images/ccca5a9a-0c41-444d-b31d-c7464a7e8e57/6f9db864-db66-4e64-87ea-307b13821889/AURA_7_futuristic_AI_marketing_command_center__elegant_human.png?_jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJrZXlIYXNoIjoiMzRkYmFjYzYzY2Y1OWQ2ZSIsImJ1Y2tldCI6InJ1bndheS10YXNrLWFydGlmYWN0cyIsInN0YWdlIjoicHJvZCIsImV4cCI6MTc5MDM4MzA0Nn0.zDLUeI-IaO8CXT1Bl0iSQG4hXgW00MRUfCeN7n4IG4w"},
+  {title:"GROWTHOS · SIGNAL ENGINE",copy:"See campaigns, conversations and agent activity in one operating layer.",image:"https://dnznrvs05pmza.cloudfront.net/gemini/gemini-3-pro-image/images/1a586ab8-8555-4955-a1c2-cf314068b8be/bec74049-4ce8-4f76-8da4-bc085c61fb12/GOLD_e_GrowthOS_futuristic_marketing_operations_room__lumino.png?_jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJrZXlIYXNoIjoiYjJkZTVlYmE4YTE2NDhkZSIsImJ1Y2tldCI6InJ1bndheS10YXNrLWFydGlmYWN0cyIsInN0YWdlIjoicHJvZCIsImV4cCI6MTc5MDQ1MzY5MH0.j5x42FUqI2_OS48q24YDQsBodz_Wgcrm2UFvYGengPg"},
+  {title:"AURA 7 · GROWTH STRATEGIST",copy:"Automate the next best action while keeping approvals under human control.",image:"https://dnznrvs05pmza.cloudfront.net/gemini/gemini-3-pro-image/images/f14ba74d-6f2e-47dd-aa0f-e82fe737cb2a/fa7a8f89-1711-4daa-8c79-62c7e0ffbfdc/AURA_7_AI_growth_strategist_in_a_premium_dark_digital_studio.png?_jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJrZXlIYXNoIjoiZDI5ZjVjNjIxYjM5ZTZiNSIsImJ1Y2tldCI6InJ1bndheS10YXNrLWFydGlmYWN0cyIsInN0YWdlIjoicHJvZCIsImV4cCI6MTc5MDQ1MjgzNH0.wC3wF7AMLipPtBfdB8LkZRe5E3HosI0fpq28XFDk-zE"}
+];function initials(user) {
+  return [user?.first_name, user?.last_name].filter(Boolean).map(x => x[0]).join("").toUpperCase() || "GE";
+}
+
+function formatNumber(value) {
+  if (value === undefined || value === null || Number.isNaN(Number(value))) return "—";
+  return new Intl.NumberFormat("en-IN", { notation:"compact", maximumFractionDigits:1 }).format(Number(value));
+}
+
+function Login({ onLogin }) {
+  const [mode, setMode] = useState("login");
+  const [form, setForm] = useState({ email:"", password:"", first_name:"", last_name:"", workspace_name:"" });
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  const submit = async (e) => {
+    e.preventDefault(); setBusy(true); setError("");
+    try {
+      const response = mode === "login"
+        ? await authApi.login({ email:form.email, password:form.password })
+        : await authApi.register(form);
+      const data = unwrap(response);
+      const token = data?.tokens?.access_token;
+      if (!token) throw new Error("Authentication succeeded but no access token was returned.");
+      localStorage.setItem("golde_access_token", token);
+      if (data?.tokens?.refresh_token) localStorage.setItem("golde_refresh_token", data.tokens.refresh_token);
+      if (data?.user) localStorage.setItem("golde_user", JSON.stringify(data.user));
+      if (data?.workspace_id) localStorage.setItem("golde_workspace_id", data.workspace_id);
+      onLogin(data?.user || null);
+    } catch (err) {
+      setError(err?.response?.data?.message || err?.message || "Authentication failed.");
+    } finally { setBusy(false); }
+  };
+
+  return <main className="auth-screen">
+    <div className="auth-orbit orbit-one" /><div className="auth-orbit orbit-two" />
+    <section className="auth-card">
+      <div className="brand-mark"><span>G</span><div><strong>GOLD-e</strong><small>GrowthOS</small></div></div>
+      <div className="auth-heading">
+        <div className="eyebrow"><Sparkles size={14}/> Marketing Intelligence</div>
+        <h1>{mode === "login" ? "Welcome back." : "Build your growth workspace."}</h1>
+        <p>{mode === "login" ? "Sign in to your AI-powered marketing command center." : "Create a workspace and start orchestrating campaigns with AI."}</p>
+      </div>
+      {error && <div className="alert error">{error}</div>}
+      <form onSubmit={submit} className="auth-form">
+        {mode === "register" && <div className="form-grid">
+          <label>First name<input required value={form.first_name} onChange={e=>setForm({...form,first_name:e.target.value})}/></label>
+          <label>Last name<input required value={form.last_name} onChange={e=>setForm({...form,last_name:e.target.value})}/></label>
+        </div>}
+        <label>Email<input required type="email" autoComplete="email" value={form.email} onChange={e=>setForm({...form,email:e.target.value})}/></label>
+        <label>Password<input required minLength="8" type="password" autoComplete={mode==="login"?"current-password":"new-password"} value={form.password} onChange={e=>setForm({...form,password:e.target.value})}/></label>
+        {mode === "register" && <label>Workspace name <span className="muted">(optional)</span><input value={form.workspace_name} onChange={e=>setForm({...form,workspace_name:e.target.value})} placeholder="My Growth Workspace"/></label>}
+        <button className="primary-btn" disabled={busy}>{busy ? "Connecting…" : mode==="login" ? "Enter GrowthOS" : "Create workspace"}<ChevronRight size={18}/></button>
+      </form>
+      <button className="text-btn" onClick={()=>{setMode(mode==="login"?"register":"login");setError("")}}>
+        {mode==="login" ? "Create a new workspace" : "Already have an account? Sign in"}
+      </button>
+      <div className="auth-footer"><span>Secure workspace isolation</span><span>JWT protected API</span></div>
+    </section>
+  </main>;
+}
+
+function Shell({ user, onLogout, page, setPage, children }) {
+  const [mobileOpen, setMobileOpen] = useState(false);
+  return <div className="app-shell command-shell">
+    <aside className={`sidebar ${mobileOpen?"open":""}`}>
+      <div className="sidebar-brand"><div className="brand-symbol">G</div><div><strong>GOLD-e</strong><small>GrowthOS</small></div><button className="mobile-close" onClick={()=>setMobileOpen(false)}><X/></button></div>
+      <div className="workspace-mini"><div className="workspace-icon">G</div><div><strong>Growth Workspace</strong><span>Active workspace</span></div><ChevronDown size={15}/></div>
+      <nav>{NAV.map(item => { const Icon=item.icon; return <button key={item.id} className={page===item.id?"active":""} onClick={()=>{setPage(item.id);setMobileOpen(false)}}><Icon size={18}/><span>{item.label}</span>{item.id==="agents" && <em>AI</em>}</button> })}</nav>
+      <div className="sidebar-bottom"><button><CircleHelp size={17}/>Help center</button><div className="user-mini"><div className="avatar">{initials(user)}</div><div><strong>{user?.first_name || "Workspace user"}</strong><span>{user?.email || ""}</span></div><button className="icon-btn" onClick={onLogout}><LogOut size={16}/></button></div></div>
+    </aside>
+    {mobileOpen && <div className="scrim" onClick={()=>setMobileOpen(false)}/>}
+    <section className="main-area">
+      <header className="topbar"><button className="mobile-menu" onClick={()=>setMobileOpen(true)}><Menu/></button><div className="crumb"><span>GrowthOS</span><ChevronRight size={14}/><strong>{NAV.find(x=>x.id===page)?.label}</strong></div><div className="top-actions"><button className="search-btn"><Search size={17}/><span>Search</span><kbd>⌘ K</kbd></button><button className="icon-circle"><Activity size={17}/></button><div className="top-avatar">{initials(user)}</div></div></header>
+      <main className="page-content">{children}</main>
+    </section>
+  </div>;
+}
+
+function PageHeader({ eyebrow, title, description, action }) {
+  return <div className="page-header"><div><div className="eyebrow">{eyebrow}</div><h1>{title}</h1><p>{description}</p></div>{action}</div>;
+}
+
+function StatCard({ icon:Icon, label, value, change, tone="" }) {
+  return <div className="stat-card"><div className={`stat-icon ${tone}`}><Icon size={19}/></div><div className="stat-copy"><span>{label}</span><strong>{value}</strong><small className={change?.startsWith("-")?"negative":""}>{change || "Live workspace metric"}</small></div></div>;
+}
+
+function HeroCarousel({setPage}) {
+  const [index,setIndex]=useState(0);
+  useEffect(()=>{const timer=setInterval(()=>setIndex(i=>(i+1)%AI_HEROES.length),7000);return()=>clearInterval(timer)},[]);
+  const slide=AI_HEROES[index];
+  return <section className="hero-carousel">
+    <img src={slide.image} alt="" className="hero-image"/>
+    <div className="hero-vignette"/>
+    <div className="hero-content"><span className="hero-kicker">{slide.title}</span><h2>Growth intelligence,<br/><strong>in motion.</strong></h2><p>{slide.copy}</p><div className="hero-actions"><button className="command-btn" onClick={()=>setPage("agents")}><Zap size={16}/>Run Growth Plan</button><button className="command-btn ghost" onClick={()=>setPage("campaigns")}>Open Campaigns <ArrowRight size={15}/></button></div></div>
+    <div className="carousel-controls"><button onClick={()=>setIndex((index-1+AI_HEROES.length)%AI_HEROES.length)} aria-label="Previous"><ChevronLeft size={17}/></button><div>{AI_HEROES.map((_,i)=><button key={i} className={i===index?"active":""} onClick={()=>setIndex(i)} aria-label={`Slide ${i+1}`}/>)}</div><button onClick={()=>setIndex((index+1)%AI_HEROES.length)} aria-label="Next"><ChevronRight size={17}/></button></div>
+  </section>;
+}
+
+function Dashboard({ setPage }) {
+  const [data,setData]=useState(null);
+  const [runs,setRuns]=useState([]);
+  const [loading,setLoading]=useState(true);
+
+  useEffect(()=>{
+    Promise.all([
+      dashboardApi.get().then(r=>unwrap(r)).catch(()=>null),
+      agentsApi.runs({page:1,limit:8}).then(r=>{
+        const x=r?.data;
+        return Array.isArray(x?.data)?x.data:Array.isArray(x)?x:[];
+      }).catch(()=>[])
+    ]).then(([dashboardData, agentRuns])=>{
+      setData(dashboardData);
+      setRuns(agentRuns);
+    }).finally(()=>setLoading(false));
+  },[]);
+
+  const stats = data?.summary || data?.metrics || data || {};
+  const contacts = Number(stats.total_contacts ?? stats.contacts ?? 0);
+  const campaigns = Number(stats.active_campaigns ?? stats.activeCampaigns ?? 0);
+  const sent = Number(stats.messages_sent ?? stats.sent_messages ?? 0);
+  const agentRuns = Number(stats.agent_runs_total ?? stats.ai_runs ?? stats.agent_runs ?? 0);
+  const approvals = Number(stats.pending_approvals_count ?? 0);
+
+  const feed = runs.slice(0,6).map((run,i)=>({
+    icon:["🧠","💬","📣","🤖","🛡️","📈"][i%6],
+    title:run.name || run.agent_name || run.title || `AI agent run ${i+1}`,
+    detail:run.status ? `Status: ${String(run.status).replaceAll("_"," ")}` : "Workspace automation",
+    state:String(run.status||"RUNNING").toUpperCase()
+  }));
+
+  if(!feed.length && !loading){
+    feed.push(
+      {icon:"🧠",title:"AURA 7 is ready",detail:"Create your first AI run to start activity",state:"READY"},
+      {icon:"📣",title:"Campaign engine ready",detail:"Create your first campaign",state:"READY"},
+      {icon:"👥",title:"Audience layer ready",detail:"Add contacts to activate growth signals",state:"READY"}
+    );
+  }
+
+  const now = new Date();
+  const dateLine = now.toLocaleDateString("en-US",{weekday:"long",day:"2-digit",month:"short",year:"numeric"}).toUpperCase();
+  const hour = now.getHours();
+  const greeting = hour<12 ? "morning" : hour<17 ? "afternoon" : "evening";
+  const savedUser = (()=>{ try { return JSON.parse(localStorage.getItem("golde_user")||"{}"); } catch { return {}; } })();
+
+  return <div className="command-center">
+    <section className="command-welcome">
+      <div className="command-aura"/>
+      <div className="command-orbit orbit-a"/>
+      <div className="command-orbit orbit-b"/>
+      <div className="command-floor"><span/><i/><b/></div>
+      <div className="command-welcome-content">
+        <div>
+          <div className="command-date">{dateLine}</div>
+          <h1>Good {greeting}, {savedUser?.first_name || "there"} 👋</h1>
+          <p>AURA 7 is connected to your workspace. Turn audience signals into campaigns, approvals and measurable growth actions.</p>
+          <div className="command-actions">
+            <button className="command-btn" onClick={()=>setPage("agents")}><Zap size={16}/>Run Growth Plan</button>
+            <button className="command-btn ghost" onClick={()=>setPage("agents")}>Review approvals{approvals ? ` (${approvals})` : ""}</button>
+          </div>
+        </div>
+        <div className="growth-score">
+          <svg width="92" height="92" viewBox="0 0 92 92">
+            <circle cx="46" cy="46" r="37" fill="none" stroke="rgba(255,255,255,.10)" strokeWidth="7"/>
+            <circle cx="46" cy="46" r="37" fill="none" stroke="#ff9a3d" strokeWidth="7" strokeLinecap="round" strokeDasharray="233" strokeDashoffset="65"/>
+          </svg>
+          <strong>72</strong><span>GROWTH SCORE</span>
+        </div>
+      </div>
+    </section>
+
+    <section className="command-kpis">
+      <div><span>CONTACTS · WORKSPACE</span><strong>{formatNumber(contacts)}</strong><small>Audience layer</small></div>
+      <div><span>ACTIVE CAMPAIGNS</span><strong>{formatNumber(campaigns)}</strong><small>Campaign engine</small></div>
+      <div><span>WHATSAPP · 30D</span><strong>{formatNumber(sent)}</strong><small>Messages sent</small></div>
+      <div><span>AGENT RUNS</span><strong>{formatNumber(agentRuns)}</strong><small>{approvals ? `${approvals} awaiting approval` : "Automation activity"}</small></div>
+    </section>
+
+    <section className="command-columns">
+      <div className="command-card">
+        <h3><span className="live-dot"/>LIVE AGENT ACTIVITY</h3>
+        <div className="command-feed">
+          {loading ? <div className="command-empty">Syncing workspace activity…</div> : feed.map((item,i)=>
+            <div className="command-feed-item" key={i}>
+              <div className="feed-icon">{item.icon}</div>
+              <div><b>{item.title}</b><span>{item.detail}</span></div>
+              <em className={item.state==="READY"?"ready":""}>{item.state==="RUNNING"?"RUNNING":item.state==="READY"?"READY":"DONE"}</em>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="command-card">
+        <h3>🛡️ APPROVAL QUEUE</h3>
+        <div className="approval-list">
+          {approvals > 0 ? <div className="approval-item"><b>{approvals} approval{approvals===1?"":"s"} awaiting review</b><span>Open AI Agents to review pending actions.</span><button onClick={()=>setPage("agents")}>Review</button></div> :
+          <div className="approval-item"><b>No approvals waiting.</b><span>Your workspace is clear for the next growth action.</span><button onClick={()=>setPage("agents")}>Open Agents</button></div>}
+        </div>
+        <div className="command-check">
+          <div className="done">Rust API connected</div>
+          <div className="done">Workspace authenticated</div>
+          <div className="done">Analytics connected</div>
+          <div className={sent>0?"done":""}>{sent>0 ? "WhatsApp activity detected" : "WhatsApp activity pending"}</div>
+        </div>
+      </div>
+    </section>
+  </div>;
+}
+
+function CreateModal({type,onClose,onDone}) {
+  const [busy,setBusy]=useState(false),[error,setError]=useState("");
+  const [form,setForm]=useState(type==="contacts"?{first_name:"",last_name:"",phone:"",email:"",company:""}:type==="campaigns"?{name:"",description:"",channel:"whatsapp"}:type==="agents"?{agent_type:"growth",name:"Growth Plan",input_params:"{}"}:{contact_id:"",content:""});
+  const submit=async e=>{e.preventDefault();setBusy(true);setError("");try{
+    let r;
+    if(type==="contacts") r=await contactsApi.create({...form,tags:[],status:"lead"});
+    else if(type==="campaigns") r=await campaignsApi.create({...form,target_tags:[]});
+    else if(type==="agents") r=await agentsApi.create({...form,input_params:JSON.parse(form.input_params||"{}")});
+    else r=await messagesApi.send(form);
+    onDone(unwrap(r)||{}); onClose();
+  }catch(err){setError(err?.response?.data?.error?.message||err?.response?.data?.message||err?.message||"Action failed.")}finally{setBusy(false)}};
+  return <Modal title={type==="contacts"?"Add contact":type==="campaigns"?"Create campaign":type==="agents"?"Run AI agent":"Send WhatsApp message"} onClose={onClose}>
+    {error&&<div className="alert error">{error}</div>}
+    <form className="modal-form" onSubmit={submit}>
+      {type==="contacts"&&<><label>First name<input required value={form.first_name} onChange={e=>setForm({...form,first_name:e.target.value})}/></label><label>Last name<input value={form.last_name} onChange={e=>setForm({...form,last_name:e.target.value})}/></label><label>Phone<input required value={form.phone} onChange={e=>setForm({...form,phone:e.target.value})}/></label><label>Email<input type="email" value={form.email} onChange={e=>setForm({...form,email:e.target.value})}/></label><label>Company<input value={form.company} onChange={e=>setForm({...form,company:e.target.value})}/></label></>}
+      {type==="campaigns"&&<><label>Campaign name<input required value={form.name} onChange={e=>setForm({...form,name:e.target.value})}/></label><label>Description<textarea value={form.description} onChange={e=>setForm({...form,description:e.target.value})}/></label><label>Channel<select value={form.channel} onChange={e=>setForm({...form,channel:e.target.value})}><option value="whatsapp">WhatsApp</option><option value="email">Email</option></select></label></>}
+      {type==="agents"&&<><label>Agent type<input required value={form.agent_type} onChange={e=>setForm({...form,agent_type:e.target.value})}/></label><label>Run name<input required value={form.name} onChange={e=>setForm({...form,name:e.target.value})}/></label><label>Input JSON<textarea value={form.input_params} onChange={e=>setForm({...form,input_params:e.target.value})}/></label></>}
+      {type==="messages"&&<><label>Contact ID<input required value={form.contact_id} onChange={e=>setForm({...form,contact_id:e.target.value})}/></label><label>Message<textarea required value={form.content} onChange={e=>setForm({...form,content:e.target.value})}/></label></>}
+      <div className="modal-actions"><button type="button" className="command-btn ghost" onClick={onClose}>Cancel</button><button className="command-btn" disabled={busy}>{busy?"Working…":"Execute"}<ArrowRight size={15}/></button></div>
+    </form>
+  </Modal>;
+}
+
+function AgentReviewModal({runId,onClose,onDone}) {
+  const [run,setRun]=useState(null),[busy,setBusy]=useState(false),[error,setError]=useState("");
+  useEffect(()=>{agentsApi.run(runId).then(unwrap).then(setRun).catch(err=>setError(err?.response?.data?.error?.message||err?.message||"Unable to load agent run."))},[runId]);
+  const act=async(step,kind)=>{setBusy(true);setError("");try{if(kind==="approve")await agentsApi.approve(runId,step.id);else await agentsApi.reject(runId,step.id,{reason:"Rejected from GrowthOS Command Center"});const next=await agentsApi.run(runId);setRun(unwrap(next));onDone()}catch(err){setError(err?.response?.data?.error?.message||err?.message||"Workflow action failed.")}finally{setBusy(false)}};
+  const steps=run?.steps||[];
+  return <Modal title="Agent approval workflow" onClose={onClose}>
+    {error&&<div className="alert error">{error}</div>}
+    {!run?<div className="empty-state compact"><div className="spinner"/><h3>Loading agent run</h3></div>:<div className="review-list">
+      <div className="review-summary"><strong>{run.name}</strong><span>{run.status} · {run.agent_type}</span></div>
+      {steps.length===0?<div className="command-empty">No workflow steps returned for this run.</div>:steps.map(step=><div className="review-step" key={step.id}><div><b>{step.name}</b><span>{step.description||step.action_type||"Agent step"} · {step.status}</span></div>{step.requires_approval&&["PENDING","WAITING","AWAITING_APPROVAL"].includes(String(step.status).toUpperCase())?<div className="review-actions"><button disabled={busy} onClick={()=>act(step,"approve")}><Check size={13}/>Approve</button><button disabled={busy} onClick={()=>act(step,"reject")}><X size={13}/>Reject</button></div>:<em>{step.status}</em>}</div>)}
+    </div>}
+  </Modal>;
+}
+
+function SimplePage({ type }) {
+  const [items,setItems]=useState([]),[loading,setLoading]=useState(true),[modal,setModal]=useState(false),[reviewRun,setReviewRun]=useState(null),[notice,setNotice]=useState("");
+  const configs={
+    agents:{title:"AI Agents",eyebrow:"AUTOMATION",desc:"Run AI workflows and review human approval checkpoints.",api:agentsApi.runs,icon:Bot,empty:"No agent runs yet."},
+    campaigns:{title:"Campaigns",eyebrow:"ORCHESTRATION",desc:"Create, launch and monitor your marketing campaigns.",api:campaignsApi.list,icon:Target,empty:"No campaigns yet."},
+    contacts:{title:"Contacts",eyebrow:"AUDIENCE",desc:"Manage the audience powering your growth engine.",api:contactsApi.list,icon:Users,empty:"No contacts yet."},
+    messages:{title:"WhatsApp",eyebrow:"CONVERSATIONS",desc:"Dispatch and monitor WhatsApp messaging activity.",api:messagesApi.list,icon:MessageSquare,empty:"No messages yet."}
+  };
+  const c=configs[type];
+  const load=()=>{setLoading(true);c.api({page:1,limit:20}).then(unwrap).then(x=>setItems(Array.isArray(x?.data)?x.data:Array.isArray(x)?x:[])).catch(()=>setItems([])).finally(()=>setLoading(false))};
+  useEffect(()=>{load()},[type]);
+  const action=async(fn,msg)=>{try{await fn();setNotice(msg);load();setTimeout(()=>setNotice(""),3000)}catch(err){setNotice(err?.response?.data?.error?.message||err?.message||"Action failed.")}};
+  return <div>
+    <PageHeader eyebrow={c.eyebrow} title={c.title} description={c.desc} action={<button className="command-btn" onClick={()=>setModal(true)}><Plus size={16}/>Create new</button>}/>
+    {notice&&<div className="action-notice"><Check size={15}/>{notice}</div>}
+    <section className="panel table-panel">
+      {loading?<div className="empty-state"><div className="spinner"/><h3>Loading workspace data</h3><p>Connecting to the Rust API…</p></div>
+      :items.length===0?<div className="empty-state"><div className="empty-icon"><c.icon/></div><h3>{c.empty}</h3><p>This workspace is ready. Create the first {type==="agents"?"AI run":type==="messages"?"WhatsApp message":type.slice(0,-1)}.</p><button className="command-btn" onClick={()=>setModal(true)}><Plus size={16}/>Get started</button></div>
+      :<div className="data-list">{items.map((item,i)=><div className="data-row" key={item.id||i}><div className="row-icon"><c.icon size={17}/></div><div><strong>{item.name||item.title||item.status||`Record ${i+1}`}</strong><small>{item.description||item.email||item.phone||item.content||item.channel||item.created_at||"Workspace record"}</small></div><span className="status-pill">{item.status||"Active"}</span>{type==="agents"&&item.id&&<button className="row-action" onClick={()=>setReviewRun(item.id)}>Review</button>}
+        {type==="campaigns"&&item.id&&(String(item.status).toLowerCase()==="active"?<button className="row-action" onClick={()=>action(()=>campaignsApi.pause(item.id),"Campaign paused")}><Pause size={13}/></button>:<button className="row-action" onClick={()=>action(()=>campaignsApi.launch(item.id),"Campaign launch requested")}><Play size={13}/></button>)}
+        <ChevronRight size={16}/></div>)}</div>}
+    </section>
+    {modal&&<CreateModal type={type} onClose={()=>setModal(false)} onDone={()=>{setNotice("Action completed successfully.");load();setTimeout(()=>setNotice(""),3000)}}/>}{reviewRun&&<AgentReviewModal runId={reviewRun} onClose={()=>setReviewRun(null)} onDone={()=>{setNotice("Agent workflow updated.");load();}}/>}
+  </div>;
+}
+function AutomationBuilder({ automation, onBack, onSaved }) {
+  const initialNodes=automation?.graph?.nodes||[
+    {id:"trigger",name:"Webhook Trigger",type:"trigger.webhook",config:{},position:[80,180]},
+    {id:"http",name:"HTTP Request",type:"http.request",config:{method:"POST",url:"https://example.com/webhook"},position:[360,180]},
+    {id:"set",name:"Set Data",type:"data.set",config:{data:{status:"processed"}},position:[640,180]}
+  ];
+  const [name,setName]=useState(automation?.name||"New Growth Automation");
+  const [nodes,setNodes]=useState(initialNodes);
+  const [edges,setEdges]=useState(automation?.graph?.edges||[{source:"trigger",target:"http"},{source:"http",target:"set"}]);
+  const [selected,setSelected]=useState(initialNodes[0]?.id||null);
+  const [edgeSource,setEdgeSource]=useState("");
+  const [edgeTarget,setEdgeTarget]=useState("");
+  const [busy,setBusy]=useState(false),[notice,setNotice]=useState("");
+
+  const selectedNode=nodes.find(n=>n.id===selected);
+  const updateNode=(patch)=>setNodes(xs=>xs.map(n=>n.id===selected?{...n,...patch}:n));
+  const updateConfig=(key,value)=>updateNode({config:{...(selectedNode?.config||{}),[key]:value}});
+  const addNode=(type,label)=>{
+    const id=`node-${Date.now()}`;
+    const config=type==="http.request"?{method:"GET",url:"https://example.com"}:
+      type==="logic.condition"?{path:"status",equals:"ready"}:
+      type==="logic.switch"?{path:"status",rules:[{equals:"ready",branch:"true"}],default_branch:"default"}:
+      type==="delay.wait"?{milliseconds:1000}:
+      type==="ai.agent"?{provider:"openai-compatible",endpoint:"https://api.example.com/v1/chat/completions",model:"default",prompt:"Analyze this input and return structured JSON.",api_key_env:"AI_API_KEY"}:
+      type==="trigger.schedule"?{interval_seconds:3600}:
+      type==="data.set"?{data:{}}:{};
+    setNodes(xs=>[...xs,{id,name:label,type,config,position:[80+xs.length*280,180]}]);
+    setSelected(id);
+  };
+  const removeNode=()=>{
+    if(!selected)return;
+    setNodes(xs=>xs.filter(n=>n.id!==selected));
+    setEdges(xs=>xs.filter(e=>e.source!==selected&&e.target!==selected));
+    setSelected(null);
+  };
+  const connect=()=>{
+    if(!edgeSource||!edgeTarget||edgeSource===edgeTarget)return;
+    if(edges.some(e=>e.source===edgeSource&&e.target===edgeTarget))return;
+    setEdges(xs=>[...xs,{source:edgeSource,target:edgeTarget}]);
+    setEdgeSource("");setEdgeTarget("");
+  };
+  const save=async(publish=false)=>{
+    setBusy(true);setNotice("");
+    try{
+      const first=nodes[0];
+      const triggerType=first?.type==="trigger.schedule"?"SCHEDULE":first?.type==="trigger.webhook"?"WEBHOOK":"MANUAL";
+      const triggerConfig=triggerType==="SCHEDULE"?(first?.config||{}):{};
+      const payload={name,description:"GOLD-e native automation workflow",trigger_type:triggerType,trigger_config:triggerConfig,graph:{nodes,edges}};
+      const res=automation?.id?await automationsApi.update(automation.id,payload):await automationsApi.create(payload);
+      const saved=unwrap(res);
+      if(publish)await automationsApi.activate(saved.id);
+      setNotice(publish?"Automation published and active.":"Automation saved as draft.");
+      onSaved();
+    }catch(e){setNotice(e?.response?.data?.error?.message||e?.response?.data?.message||e?.message||"Unable to save automation.");}
+    finally{setBusy(false)}
+  };
+  const library=[
+    ["trigger.manual","Manual Trigger"],["trigger.webhook","Webhook Trigger"],["trigger.schedule","Schedule Trigger"],
+    ["http.request","HTTP Request"],["logic.condition","IF / Condition"],["logic.switch","Switch"],["logic.filter","Filter"],
+    ["transform.merge","Merge"],["transform.split","Split Items"],["transform.aggregate","Aggregate"],
+    ["delay.wait","Wait / Delay"],["data.set","Set Data"],["ai.agent","AI Agent"],["data.noop","No-op"]
+  ];
+  return <div>
+    <PageHeader eyebrow="AUTOMATION BUILDER" title={name} description="Design, connect, test and publish a native GOLD-e workflow." action={<div className="builder-actions"><button className="ghost-btn" onClick={onBack}>Back</button><button className="command-btn ghost" disabled={busy} onClick={()=>save(false)}>Save draft</button><button className="command-btn" disabled={busy} onClick={()=>save(true)}><Rocket size={15}/>Publish</button></div>}/>
+    {notice&&<div className="action-notice"><Check size={15}/>{notice}</div>}
+    <section className="builder-layout">
+      <aside className="panel node-library">
+        <div className="panel-head"><div><span className="panel-kicker">NODE LIBRARY</span><h2>Build blocks</h2></div></div>
+        <input value={name} onChange={e=>setName(e.target.value)} placeholder="Automation name"/>
+        {library.map(([type,label])=><button key={type} onClick={()=>addNode(type,label)}><Zap size={15}/>{label}</button>)}
+      </aside>
+      <section className="panel workflow-canvas">
+        <div className="canvas-toolbar"><span>WORKFLOW · {nodes.length} NODES · {edges.length} CONNECTIONS</span><span>Drag a node onto another to connect</span></div>
+        <div className="canvas-grid">
+          {nodes.map((n,i)=><div className={`workflow-node ${selected===n.id?"selected":""}`} key={n.id}
+            draggable onDragStart={e=>e.dataTransfer.setData("text/plain",n.id)}
+            onDragOver={e=>e.preventDefault()} onDrop={e=>{e.preventDefault();const source=e.dataTransfer.getData("text/plain");if(source&&source!==n.id&&!edges.some(x=>x.source===source&&x.target===n.id))setEdges(xs=>[...xs,{source,target:n.id}])}}
+            onClick={()=>setSelected(n.id)}>
+            <div className="node-index">{i+1}</div><div><strong>{n.name}</strong><small>{n.type.replaceAll("."," · ").toUpperCase()}</small></div>
+          </div>)}
+        </div>
+        <div className="canvas-help">
+          <div className="builder-connect"><select value={edgeSource} onChange={e=>setEdgeSource(e.target.value)}><option value="">From node…</option>{nodes.map(n=><option key={n.id} value={n.id}>{n.name}</option>)}</select><ArrowRight size={14}/><select value={edgeTarget} onChange={e=>setEdgeTarget(e.target.value)}><option value="">To node…</option>{nodes.map(n=><option key={n.id} value={n.id}>{n.name}</option>)}</select><button className="command-btn" onClick={connect}>Connect</button></div>
+          <div className="edge-list">{edges.map((e,i)=><span key={i}>{nodes.find(n=>n.id===e.source)?.name||e.source} → {nodes.find(n=>n.id===e.target)?.name||e.target}</span>)}</div>
+        </div>
+      </section>
+      <aside className="panel node-config">
+        <div className="panel-head"><div><span className="panel-kicker">NODE CONFIGURATION</span><h2>{selectedNode?.name||"Select a node"}</h2></div></div>
+        {selectedNode?<div className="node-form">
+          <label>Name<input value={selectedNode.name} onChange={e=>updateNode({name:e.target.value})}/></label>
+          {(selectedNode.type==="http.request"||selectedNode.type==="action.http")&&<><label>Method<select value={selectedNode.config.method||"GET"} onChange={e=>updateConfig("method",e.target.value)}><option>GET</option><option>POST</option><option>PUT</option><option>PATCH</option><option>DELETE</option></select></label><label>HTTPS URL<input value={selectedNode.config.url||""} onChange={e=>updateConfig("url",e.target.value)}/></label><label>Body JSON<textarea value={JSON.stringify(selectedNode.config.body||{},null,2)} onChange={e=>{try{updateConfig("body",JSON.parse(e.target.value))}catch{}}}/></label></>}
+          {(selectedNode.type==="logic.condition"||selectedNode.type==="logic.filter")&&<><label>JSON path<input value={selectedNode.config.path||""} onChange={e=>updateConfig("path",e.target.value)}/></label><label>Equals<input value={String(selectedNode.config.equals??"")} onChange={e=>updateConfig("equals",e.target.value)}/></label></>}
+          {selectedNode.type==="logic.switch"&&<><label>JSON path<input value={selectedNode.config.path||""} onChange={e=>updateConfig("path",e.target.value)}/></label><label>Rules JSON<textarea value={JSON.stringify(selectedNode.config.rules||[],null,2)} onChange={e=>{try{updateConfig("rules",JSON.parse(e.target.value))}catch{}}}/></label></>}
+          {selectedNode.type==="trigger.schedule"&&<label>Run every (seconds)<input type="number" min="1" value={selectedNode.config.interval_seconds||3600} onChange={e=>updateConfig("interval_seconds",Number(e.target.value))}/></label>}
+          {selectedNode.type==="delay.wait"&&<label>Delay milliseconds<input type="number" min="0" max="30000" value={selectedNode.config.milliseconds||1000} onChange={e=>updateConfig("milliseconds",Number(e.target.value))}/></label>}
+          {selectedNode.type==="data.set"&&<label>Data JSON<textarea value={JSON.stringify(selectedNode.config.data||{},null,2)} onChange={e=>{try{updateConfig("data",JSON.parse(e.target.value))}catch{}}}/></label>}
+          {(selectedNode.type==="ai.agent"||selectedNode.type==="ai.generate")&&<><label>Provider<input value={selectedNode.config.provider||"openai-compatible"} onChange={e=>updateConfig("provider",e.target.value)}/></label><label>Endpoint<input value={selectedNode.config.endpoint||""} onChange={e=>updateConfig("endpoint",e.target.value)}/></label><label>Model<input value={selectedNode.config.model||"default"} onChange={e=>updateConfig("model",e.target.value)}/></label><label>API key environment variable<input value={selectedNode.config.api_key_env||""} onChange={e=>updateConfig("api_key_env",e.target.value)}/></label><label>Prompt<textarea value={selectedNode.config.prompt||""} onChange={e=>updateConfig("prompt",e.target.value)}/></label></>}
+          <button className="ghost-btn danger-action" onClick={removeNode}>Remove node</button>
+        </div>:<p>Select a workflow node to configure it.</p>}
+      </aside>
+    </section>
+  </div>;
+}
+
+function AutomationsPage() {
+  const [items,setItems]=useState([]),[templates,setTemplates]=useState([]),[loading,setLoading]=useState(true);
+  const [builder,setBuilder]=useState(null),[history,setHistory]=useState(null),[historyRows,setHistoryRows]=useState([]);
+  const [notice,setNotice]=useState("");
+  const load=()=>{setLoading(true);Promise.all([automationsApi.list().then(unwrap).catch(()=>[]),automationsApi.templates().then(unwrap).catch(()=>[])]).then(([a,t])=>{setItems(Array.isArray(a?.data)?a.data:Array.isArray(a)?a:[]);setTemplates(Array.isArray(t?.data)?t.data:Array.isArray(t)?t:[]);}).finally(()=>setLoading(false));};
+  useEffect(()=>{load()},[]);
+  const openHistory=async(a)=>{setHistory(a);setHistoryRows([]);try{const r=await automationsApi.runs(a.id);const x=unwrap(r);setHistoryRows(Array.isArray(x?.data)?x.data:Array.isArray(x)?x:[]);}catch{}};
+  const act=async(id,action)=>{try{await automationsApi[action](id);setNotice(action==="activate"?"Automation published.":"Automation paused.");load();}catch(e){setNotice(e?.response?.data?.error?.message||e?.message||"Action failed.");}setTimeout(()=>setNotice(""),2500)};
+  const useTemplate=(t)=>setBuilder({name:t.name,description:t.description,trigger_type:t.trigger_type,trigger_config:t.trigger_config||{},graph:t.graph});
+  if(builder)return <AutomationBuilder automation={builder} onBack={()=>setBuilder(null)} onSaved={()=>{setBuilder(null);load();}}/>;
+  return <div>
+    <PageHeader eyebrow="AUTOMATION ENGINE" title="Automations" description="Build native trigger → logic → action workflows inside GOLD-e GrowthOS." action={<button className="command-btn" onClick={()=>setBuilder(true)}><Plus size={16}/>Create automation</button>}/>
+    {notice&&<div className="action-notice"><Check size={15}/>{notice}</div>}
+    <section className="panel template-panel"><div className="panel-head"><div><span className="panel-kicker">GOLD-e STARTER LIBRARY</span><h2>Workflow templates</h2></div><span className="range-pill">{templates.length} native templates</span></div>
+      <div className="template-grid">{templates.map(t=><button className="template-card" key={t.id} onClick={()=>useTemplate(t)}><div className="template-card-icon"><Zap size={17}/></div><div><strong>{t.name}</strong><span>{t.description}</span><em>{t.category} · {t.trigger_type}</em></div><ArrowRight size={16}/></button>)}{!templates.length&&!loading&&<div className="command-empty">No templates available.</div>}</div>
+    </section>
+    <section className="panel table-panel"><div className="panel-head"><div><span className="panel-kicker">WORKSPACE FLOWS</span><h2>Your automations</h2></div><span className="range-pill">{items.length} workflows</span></div>
+      {loading?<div className="empty-state"><div className="spinner"/><h3>Loading automations</h3></div>:items.length===0?<div className="empty-state"><div className="empty-icon"><Zap/></div><h3>No automations yet.</h3><p>Start from a template or build a workflow from scratch.</p><button className="command-btn" onClick={()=>setBuilder(true)}><Plus size={16}/>Build automation</button></div>:<div className="data-list">{items.map(a=><div className="data-row" key={a.id}><div className="row-icon"><Zap size={17}/></div><div><strong>{a.name}</strong><small>{a.trigger_type} · v{a.version} · {a.graph?.nodes?.length||0} nodes · {a.schedule_interval_seconds?a.schedule_interval_seconds+"s interval":a.status}</small></div><span className="status-pill">{a.status}</span><button className="row-action" onClick={()=>setBuilder(a)}>Edit</button><button className="row-action" onClick={()=>openHistory(a)}>History</button>{a.status==="ACTIVE"?<button className="row-action" onClick={()=>act(a.id,"pause")}><Pause size={13}/></button>:<button className="row-action" onClick={()=>act(a.id,"activate")}><Play size={13}/></button>}<button className="row-action" onClick={async()=>{try{await automationsApi.run(a.id,{payload:{source:"GrowthOS manual test",test:true}});setNotice("Test execution completed.");}catch(e){setNotice(e?.response?.data?.error?.message||e?.message||"Test failed.");}openHistory(a);setTimeout(()=>setNotice(""),2500)}}>Test</button></div>)}</div>}
+    </section>
+    {history&&<section className="panel table-panel"><div className="panel-head"><div><span className="panel-kicker">EXECUTION HISTORY</span><h2>{history.name}</h2></div><button className="ghost-btn" onClick={()=>setHistory(null)}><X size={15}/>Close</button></div>{historyRows.length===0?<div className="command-empty">No executions recorded yet.</div>:<div className="data-list">{historyRows.map(run=><div className="data-row" key={run.id}><div className="row-icon"><Activity size={16}/></div><div><strong>{String(run.status||"UNKNOWN")}</strong><small>{run.started_at||"—"}{run.completed_at?" → "+run.completed_at:""}</small></div><span className="status-pill">{run.status}</span><button className="row-action" onClick={async()=>{try{const r=await automationsApi.runSteps(history.id,run.id);const steps=unwrap(r);setNotice((Array.isArray(steps?.data)?steps.data.length:Array.isArray(steps)?steps.length:0)+" execution steps recorded.");}catch(e){setNotice(e?.message||"Unable to load steps.");}setTimeout(()=>setNotice(""),2500)}}>Inspect steps</button></div>)}</div>}</section>}
+  </div>;
+}
+function Analytics() {
+  const [data,setData]=useState(null);
+  useEffect(()=>{dashboardApi.get().then(r=>setData(unwrap(r))).catch(()=>{})},[]);
+  const values=useMemo(()=>[42,58,49,73,65,81,76],[]);
+  return <div><PageHeader eyebrow="PERFORMANCE" title="Analytics" description="A live view of workspace performance and growth signals." action={<button className="ghost-btn"><BarChart3 size={16}/>Export report</button>}/><div className="analytics-grid"><section className="panel chart-panel"><div className="panel-head"><div><span className="panel-kicker">ACTIVITY TREND</span><h2>Growth activity</h2></div><span className="range-pill">Last 7 days</span></div><div className="bars">{values.map((v,i)=><div className="bar-wrap" key={i}><div className="bar" style={{height:`${v}%`}}/><small>{["M","T","W","T","F","S","S"][i]}</small></div>)}</div></section><section className="panel"><div className="panel-head"><div><span className="panel-kicker">LIVE DATA</span><h2>Dashboard payload</h2></div></div><pre className="json-view">{data?JSON.stringify(data,null,2):"Waiting for analytics endpoint…"}</pre></section></div></div>;
+}
+
+function SettingsPage({user}) {
+  return <div><PageHeader eyebrow="WORKSPACE" title="Settings" description="Manage workspace access and your GrowthOS account."/><div className="settings-grid"><section className="panel setting-card"><div className="setting-icon"><Users/></div><div><h2>Workspace</h2><p>Current authenticated workspace and membership context.</p><div className="setting-value">{localStorage.getItem("golde_workspace_id") || "Workspace ID not returned"}</div></div></section><section className="panel setting-card"><div className="setting-icon"><Settings/></div><div><h2>Account</h2><p>{user?.email || "Authenticated user"}</p><div className="setting-value">{user?.first_name} {user?.last_name}</div></div></section></div></div>;
+}
+
+export default function App() {
+  const [user,setUser]=useState(()=>{try{return JSON.parse(localStorage.getItem("golde_user"))}catch{return null}});
+  const [page,setPage]=useState("dashboard");
+  const [checking,setChecking]=useState(!!localStorage.getItem("golde_access_token"));
+
+  useEffect(()=>{ if(!localStorage.getItem("golde_access_token")){setChecking(false);return;} authApi.me().then(r=>setUser(unwrap(r))).catch(()=>{localStorage.removeItem("golde_access_token");setUser(null)}).finally(()=>setChecking(false)); },[]);
+
+  const logout=async()=>{try{await authApi.logout(localStorage.getItem("golde_refresh_token"))}catch{} ["golde_access_token","golde_refresh_token","golde_user","golde_workspace_id"].forEach(k=>localStorage.removeItem(k));setUser(null);setPage("dashboard")};
+
+  if(checking) return <div className="boot-screen"><div className="boot-logo">G</div><span>Loading GrowthOS</span></div>;
+  if(!user) return <Login onLogin={setUser}/>;
+
+  let content;
+  if(page==="dashboard") content=<Dashboard setPage={setPage}/>;
+  else if(page==="analytics") content=<Analytics/>;
+  else if(page==="settings") content=<SettingsPage user={user}/>;
+  else if(page==="automations") content=<AutomationsPage/>;
+  else content=<SimplePage type={page}/>;
+
+  return <Shell user={user} onLogout={logout} page={page} setPage={setPage}>{content}</Shell>;
+}

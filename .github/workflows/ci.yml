@@ -2,9 +2,9 @@ name: Continuous Integration & Security Audit
 
 on:
   push:
-    branches: [ main, master, develop ]
+    branches: [ main, master, develop, ui/golde-growthos-portal ]
   pull_request:
-    branches: [ main, master ]
+    branches: [ main, master, ui/golde-growthos-portal ]
 
 env:
   CARGO_TERM_COLOR: always
@@ -51,3 +51,18 @@ jobs:
         run: cargo test --all-features -- --nocapture
       - name: Release Compilation Build
         run: cargo build --release
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 26
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
