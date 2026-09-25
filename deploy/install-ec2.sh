@@ -136,7 +136,7 @@ CERT_FILE=/etc/letsencrypt/live/$CERT_NAME/fullchain.pem
 KEY_FILE=/etc/letsencrypt/live/$CERT_NAME/privkey.pem
 
 echo "==> Ensuring dedicated certificate for api.goldetech.com..."
-sudo certbot certonly --webroot -w /var/www/html --non-interactive --agree-tos --register-unsafely-without-email --keep-until-expiring --cert-name "$CERT_NAME" -d api.goldetech.com
+sudo certbot certonly --webroot -w /var/www/html --non-interactive --agree-tos --register-unsafely-without-email --force-renewal --cert-name "$CERT_NAME" -d api.goldetech.com
 
 sudo test -s "$CERT_FILE"
 sudo test -s "$KEY_FILE"
