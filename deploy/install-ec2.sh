@@ -14,6 +14,7 @@ if ! id golde >/dev/null 2>&1; then
 fi
 
 sudo mkdir -p "$APP_DIR/bin" "$APP_DIR/migrations" /var/log/golde-marketing-api
+sudo systemctl stop golde-marketing-api.service 2>/dev/null || true
 BINARY_PATH=$(find "$RELEASE_DIR" -type f -name golde-marketing-api -print -quit)
 if [ -z "$BINARY_PATH" ]; then
   echo "Release binary not found under $RELEASE_DIR" >&2
