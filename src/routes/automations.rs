@@ -1,7 +1,7 @@
 use crate::error::AppError;
 use crate::middleware::{require_workspace_roles, TenantContext};
 use crate::models::{CreateAutomationDto, RunAutomationDto, UpdateAutomationDto};
-use crate::services::automation_service;
+use crate::services::{automation_service, automation_templates};
 use crate::state::AppState;
 use axum::{extract::{Path, State}, routing::{get,post}, Json, Router};
 use serde_json::json;
@@ -10,6 +10,8 @@ use uuid::Uuid;
 pub fn routes(state: AppState)->Router{
     Router::new()
       .route("/",get(list).post(create))
+      .route("/templates",get(templates))
+      .route("/templates/:template_id",get(template))
       .route("/:id",get(get_one).put(update))
       .route("/:id/activate",post(activate))
       .route("/:id/pause",post(pause))
@@ -21,6 +23,14 @@ pub fn routes(state: AppState)->Router{
 
 async fn list(State(state):State<AppState>,tenant:TenantContext)->Result<Json<serde_json::Value>,AppError>{
     Ok(Json(json!({"data":automation_service::list(&state.pool,tenant.workspace_id).await?,"message":"Automations retrieved"})))
+}
+async fn templates()->Result<Json<serde_json::Value>,AppError>{
+    Ok(Json(json!({"data":automation_templates::list(),"message":"Automation templates retrieved"})))
+}
+async fn template(Path(template_id):Path<String>)->Result<Json<serde_json::Value>,AppError>{
+    automation_templates::get(&template_id)
+        .map(|data|Json(json!({"data":data,"message":"Automation template retrieved"})))
+        .ok_or_else(||AppError::NotFound("Automation template not found".into()))
 }
 async fn get_one(State(state):State<AppState>,tenant:TenantContext,Path(id):Path<Uuid>)->Result<Json<serde_json::Value>,AppError>{
     Ok(Json(json!({"data":automation_service::get(&state.pool,tenant.workspace_id,id).await?,"message":"Automation retrieved"})))
