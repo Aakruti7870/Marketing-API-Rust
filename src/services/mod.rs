@@ -7,6 +7,7 @@ pub mod message_service;
 pub mod agent_service;
 pub mod analytics_service;
 pub mod automation_service;
+pub mod automation_templates;
 
 pub use auth_service::*;
 pub use workspace_service::*;
