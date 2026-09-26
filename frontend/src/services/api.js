@@ -181,6 +181,8 @@ export const automationsApi = {
   getRun: (runId) => api.get(`/automations/runs/${runId}`),
   runs: (runId) => api.get(`/automations/runs/${runId}`), // alias
   approveStep: (runId, stepId) => api.post(`/automations/runs/${runId}/steps/${stepId}/approve`),
+  declineStep: (runId, stepId) => api.post(`/automations/runs/${runId}/steps/${stepId}/decline`),
+  delete: (id) => api.delete(`/automations/${id}`),
 };
 
 export default api;
