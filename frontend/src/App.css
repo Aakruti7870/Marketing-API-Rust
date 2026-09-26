@@ -102,3 +102,11 @@
   .canvas-hint{display:none}
   .automation-hero{align-items:flex-start;flex-direction:column}
 }
+
+.approval-connect-panel{display:grid;gap:7px}
+.approval-connect{font-size:8px!important;padding:0 6px!important}
+.approval-connect.approved{color:#1f9d63!important}
+.approval-connect.declined{color:#c93854!important}
+.approval-connect-panel .full-btn{justify-content:center}
+.run-approval-actions{display:flex;gap:6px;margin-left:auto}
+.decline-btn{color:#c93854!important;border-color:#f0cbd3!important}
