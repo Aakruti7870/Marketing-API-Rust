@@ -208,11 +208,13 @@ jobs:
               nodes:[
                 {node_key:"trigger",node_type:"MANUAL_TRIGGER",name:"Manual Trigger",config:{},position:{}},
                 {node_key:"approval",node_type:"APPROVAL",name:"Approval Gate",config:{},position:{}},
-                {node_key:"set",node_type:"SET",name:"Post Approval",config:{values:{approval_test:"passed"}},position:{}}
+                {node_key:"success",node_type:"SET",name:"Success Path",config:{values:{approval_test:"approved"}},position:{}},
+                {node_key:"declined",node_type:"SET",name:"Declined Path",config:{values:{approval_test:"declined"}},position:{}}
               ],
               edges:[
                 {source_node_key:"trigger",target_node_key:"approval",config:{}},
-                {source_node_key:"approval",target_node_key:"set",config:{}}
+                {source_node_key:"approval",target_node_key:"success",config:{path:"approval.outcome",operator:"eq",value:"approved"}},
+                {source_node_key:"approval",target_node_key:"declined",config:{path:"approval.outcome",operator:"eq",value:"declined"}}
               ],
               schedule:null
             }' > approval-automation.json
@@ -264,6 +266,7 @@ jobs:
           curl --fail --silent --show-error -H "Authorization: Bearer ${ACCESS_TOKEN}" -H "x-workspace-id: ${WORKSPACE_ID}" "${BASE_URL}/api/v1/automations/runs/${APPROVAL_RUN_ID}" > approval-completed.json
 
           jq -e '.success == true and .data.status == "COMPLETED" and (.data.steps | length) == 3' approval-completed.json >/dev/null
+          jq -e '.data.steps[] | select(.node_key == "success") | .output.approval_test == "approved"' approval-completed.json >/dev/null
           jq -e '.data.steps[] | select(.node_type == "APPROVAL") | .output.approved == true and .output.outcome == "approved"' approval-completed.json >/dev/null
 
           # Run the same production workflow a second time and verify the Declined path.
@@ -302,6 +305,7 @@ jobs:
             "\${BASE_URL}/api/v1/automations/runs/\${APPROVAL_DECLINE_RUN_ID}" > approval-declined-completed.json
 
           jq -e '.success == true and .data.status == "COMPLETED" and (.data.steps | length) == 3' approval-declined-completed.json >/dev/null
+          jq -e '.data.steps[] | select(.node_key == "declined") | .output.approval_test == "declined"' approval-declined-completed.json >/dev/null
           jq -e '.data.steps[] | select(.node_type == "APPROVAL") | .output.approved == false and .output.outcome == "declined"' approval-declined-completed.json >/dev/null
           echo "Production automation E2E smoke test PASSED: success and declined approval paths verified."
 
