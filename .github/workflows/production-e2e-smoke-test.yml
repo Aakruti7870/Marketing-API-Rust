@@ -76,7 +76,7 @@ jobs:
             -H "x-workspace-id: \${WORKSPACE_ID}" \
             "\${BASE_URL}/api/v1/automations" > existing-automations.json
           jq -r '.data[] | select(.name | startswith("PROD E2E ")) | .id' existing-automations.json | while read -r id; do
-            [ -z "\$id" ] && continue
+            [ -z "$id" ] && continue
             curl --fail --silent --show-error -X DELETE \
               -H "Authorization: Bearer \${ACCESS_TOKEN}" \
               -H "x-workspace-id: \${WORKSPACE_ID}" \
@@ -278,7 +278,7 @@ jobs:
             -d '{"payload":{"source":"github-smoke-test","approval_outcome":"declined"}}' \
             "\${BASE_URL}/api/v1/automations/\${APPROVAL_AUTOMATION_ID}/run" > approval-decline-run.json
 
-          APPROVAL_DECLINE_RUN_ID="\$(jq -r '.data.run_id' approval-decline-run.json)"
+          APPROVAL_DECLINE_RUN_ID="$(jq -r '.data.run_id' approval-decline-run.json)"
           test "\${APPROVAL_DECLINE_RUN_ID}" != "null"
 
           sleep 1
@@ -287,7 +287,7 @@ jobs:
             -H "x-workspace-id: \${WORKSPACE_ID}" \
             "\${BASE_URL}/api/v1/automations/runs/\${APPROVAL_DECLINE_RUN_ID}" > approval-decline-status.json
 
-          DECLINE_STEP_ID="\$(jq -r '.data.steps[] | select(.node_type == "APPROVAL") | .id' approval-decline-status.json)"
+          DECLINE_STEP_ID="$(jq -r '.data.steps[] | select(.node_type == "APPROVAL") | .id' approval-decline-status.json)"
           test -n "\${DECLINE_STEP_ID}" && test "\${DECLINE_STEP_ID}" != "null"
           jq -e '.success == true and .data.status == "WAITING_APPROVAL"' approval-decline-status.json >/dev/null
 
@@ -315,7 +315,7 @@ jobs:
         run: |
           set +e
           for id in "\${AUTOMATION_ID:-}" "\${WEBHOOK_AUTOMATION_ID:-}" "\${APPROVAL_AUTOMATION_ID:-}"; do
-            [ -z "\$id" ] || [ "\$id" = "null" ] && continue
+            [ -z "$id" ] || [ "$id" = "null" ] && continue
             curl --fail --silent --show-error -X DELETE \
               -H "Authorization: Bearer \${ACCESS_TOKEN}" \
               -H "x-workspace-id: \${WORKSPACE_ID}" \
