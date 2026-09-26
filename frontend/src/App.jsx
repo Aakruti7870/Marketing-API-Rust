@@ -142,11 +142,108 @@ function SimplePage({ type }) {
 
 function AutomationsPage() {
   const [items,setItems]=useState([]),[loading,setLoading]=useState(true),[notice,setNotice]=useState("");
+  const [selectedRun,setSelectedRun]=useState(null),[runLoading,setRunLoading]=useState(false),[runError,setRunError]=useState(""),[approving,setApproving]=useState(false);
+
   const load=()=>{setLoading(true);automationsApi.list().then(unwrap).then(x=>setItems(Array.isArray(x?.data)?x.data:Array.isArray(x)?x:[])).catch(()=>setItems([])).finally(()=>setLoading(false))};
   useEffect(()=>{load()},[]);
-  const act=async(id,action)=>{try{await automationsApi[action](id);setNotice(action==="publish"?"Automation published.":"Automation paused.");load();setTimeout(()=>setNotice(""),2500)}catch(e){setNotice(e?.response?.data?.error||e?.message||"Action failed.")}};
-  return <div><PageHeader eyebrow="AUTOMATION ENGINE" title="Automations" description="Build native workflows natively inside GOLD-e GrowthOS." action={<button className="command-btn"><Plus size={16}/>Create automation</button>}/>{notice&&<div className="action-notice"><Check size={15}/>{notice}</div>}
-    <section className="panel table-panel">{loading?<div className="empty-state"><div className="spinner"/><h3>Loading automations</h3></div>:items.length===0?<div className="empty-state"><div className="empty-icon"><Zap/></div><h3>No automations yet.</h3><p>Create your first workflow with triggers, HTTP actions, conditions and approval gates.</p><button className="command-btn"><Plus size={16}/>Build first automation</button></div>:<div className="data-list">{items.map(a=><div className="data-row" key={a.id}><div className="row-icon"><Zap size={17}/></div><div><strong>{a.name}</strong><small>{a.status} · v{a.version||1}</small></div><span className="status-pill">{a.status}</span>{a.status==="PUBLISHED"?<button className="row-action" onClick={()=>act(a.id,"pause")}><Pause size={13}/></button>:<button className="row-action" onClick={()=>act(a.id,"publish")}><Play size={13}/></button>}<button className="row-action" onClick={async()=>{await automationsApi.run(a.id,{payload:{source:"GrowthOS manual test"}});setNotice("Test execution completed.");setTimeout(()=>setNotice(""),2500)}}>Run</button></div>)}</div>}</section></div>;
+
+  const act=async(id,action)=>{
+    try{
+      await automationsApi[action](id);
+      setNotice("Automation published.");
+      load();
+      setTimeout(()=>setNotice(""),2500);
+    }catch(e){
+      setNotice(e?.response?.data?.error||e?.message||"Action failed.");
+    }
+  };
+
+  const openRun=async(runId)=>{
+    if(!runId) return;
+    setRunLoading(true); setRunError("");
+    try{
+      const data=unwrap(await automationsApi.getRun(runId));
+      setSelectedRun(data);
+    }catch(e){
+      setRunError(e?.response?.data?.error||e?.message||"Unable to load automation run.");
+    }finally{setRunLoading(false)}
+  };
+
+  const runAutomation=async(id)=>{
+    setNotice("");
+    try{
+      const data=unwrap(await automationsApi.run(id,{payload:{source:"GrowthOS manual test"}}));
+      const runId=data?.run_id;
+      if(!runId) throw new Error("Automation started but no run ID was returned.");
+      setNotice("Automation run started.");
+      await openRun(runId);
+      setTimeout(()=>setNotice(""),2500);
+    }catch(e){
+      setNotice(e?.response?.data?.error||e?.message||"Automation run failed.");
+    }
+  };
+
+  const approveStep=async(step)=>{
+    if(!selectedRun?.id || !step?.id) return;
+    setApproving(true); setRunError("");
+    try{
+      await automationsApi.approveStep(selectedRun.id,step.id);
+      await openRun(selectedRun.id);
+      setNotice("Approval accepted. Execution resumed.");
+      setTimeout(()=>setNotice(""),2500);
+    }catch(e){
+      setRunError(e?.response?.data?.error||e?.message||"Approval failed.");
+    }finally{setApproving(false)}
+  };
+
+  const steps=Array.isArray(selectedRun?.steps)?selectedRun.steps:[];
+  const waitingStep=steps.find(step=>step.status==="WAITING_APPROVAL");
+
+  return <div>
+    <PageHeader eyebrow="AUTOMATION ENGINE" title="Automations" description="Build native workflows natively inside GOLD-e GrowthOS." action={<button className="command-btn"><Plus size={16}/>Create automation</button>}/>
+    {notice&&<div className="action-notice"><Check size={15}/>{notice}</div>}
+
+    <section className="panel table-panel">
+      {loading?<div className="empty-state"><div className="spinner"/><h3>Loading automations</h3></div>
+      :items.length===0?<div className="empty-state"><div className="empty-icon"><Zap/></div><h3>No automations yet.</h3><p>Create your first workflow with triggers, HTTP actions, conditions and approval gates.</p><button className="command-btn"><Plus size={16}/>Build first automation</button></div>
+      :<div className="data-list">{items.map(a=><div className="data-row" key={a.id}>
+        <div className="row-icon"><Zap size={17}/></div>
+        <div><strong>{a.name}</strong><small>{a.status} · v{a.version||1}</small></div>
+        <span className="status-pill">{a.status}</span>
+        {a.status!=="PUBLISHED"
+          ?<button className="row-action" onClick={()=>act(a.id,"publish")}><Play size={13}/></button>
+          :<span className="row-action-spacer" title="Pause is not available in the current API."/>}
+        <button className="row-action" onClick={()=>runAutomation(a.id)}>Run</button>
+      </div>)}</div>}
+    </section>
+
+    {(runLoading||selectedRun||runError)&&<div className="run-modal-backdrop" onClick={()=>setSelectedRun(null)}>
+      <section className="run-modal" onClick={e=>e.stopPropagation()}>
+        <div className="run-modal-head">
+          <div><div className="panel-kicker">AUTOMATION RUN</div><h2>Run details</h2></div>
+          <button className="icon-btn" onClick={()=>setSelectedRun(null)} aria-label="Close"><X size={18}/></button>
+        </div>
+
+        {runLoading?<div className="empty-state compact"><div className="spinner"/><h3>Loading run…</h3></div>
+        :runError?<div className="alert error">{runError}</div>
+        :selectedRun&&<>
+          <div className="run-summary">
+            <div><span>Status</span><strong className={selectedRun.status==="COMPLETED"?"run-success":selectedRun.status==="WAITING_APPROVAL"?"run-waiting":""}>{selectedRun.status||"UNKNOWN"}</strong></div>
+            <div><span>Run ID</span><strong>{selectedRun.id||"—"}</strong></div>
+          </div>
+          <div className="run-steps">
+            <div className="panel-head"><div><div className="panel-kicker">EXECUTION</div><h3>Steps</h3></div><button className="ghost-btn compact" onClick={()=>openRun(selectedRun.id)}>Refresh</button></div>
+            {steps.length===0?<div className="run-empty">No execution steps returned.</div>:steps.map((step,index)=><div className="run-step" key={step.id||step.node_key||index}>
+              <div className="run-step-number">{index+1}</div>
+              <div className="run-step-main"><strong>{step.node_key||step.node_type||"Step"}</strong><small>{step.node_type||"Automation step"}</small></div>
+              <span className={`run-step-status status-${String(step.status||"").toLowerCase()}`}>{step.status||"UNKNOWN"}</span>
+              {step.status==="WAITING_APPROVAL"&&<button className="command-btn compact" disabled={approving} onClick={()=>approveStep(step)}>{approving?"Approving…":"Approve"}</button>}
+            </div>)}
+          </div>
+        </>}
+      </section>
+    </div>}
+  </div>;
 }
 
 function Analytics() {
