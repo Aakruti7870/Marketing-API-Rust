@@ -184,7 +184,8 @@ fn merge(mut a:Value,b:Value)->Value { if let (Some(am),Some(bm))=(a.as_object_m
 fn interpolate(v:&Value,vars:&Value)->Value { match v {Value::String(s)=>Value::String(interpolate_str(s,vars)),Value::Array(a)=>Value::Array(a.iter().map(|x|interpolate(x,vars)).collect()),Value::Object(m)=>Value::Object(m.iter().map(|(k,v)|(k.clone(),interpolate(v,vars))).collect()),x=>x.clone()} }
 fn interpolate_str(s:&str,vars:&Value)->String { let mut out=s.to_string(); for _ in 0..20 { let Some(a)=out.find("{{") else{break}; let Some(rel)=out[a+2..].find("}}") else{break}; let b=a+2+rel; let mut v=vars; for p in out[a+2..b].trim().split('.') {v=match v.get(p){Some(x)=>x,None=>&Value::Null};} let rep=v.as_str().map(str::to_owned).unwrap_or_else(||v.to_string()); out.replace_range(a..b+2,&rep); } out }
 
-pub async fn approve_run(state:&AppState, workspace_id:Uuid, run_id:Uuid, step_id:Uuid)->Result<(),AppError>{
+
+async fn resume_approval(state:&AppState, workspace_id:Uuid, run_id:Uuid, step_id:Uuid, approved:bool)->Result<(),AppError>{
     let run=sqlx::query("SELECT automation_id,variables,status FROM automation_runs WHERE id=$1 AND workspace_id=$2 FOR UPDATE")
         .bind(run_id).bind(workspace_id).fetch_optional(&state.pool).await?
         .ok_or_else(||AppError::NotFound("Automation run not found".into()))?;
@@ -199,8 +200,10 @@ pub async fn approve_run(state:&AppState, workspace_id:Uuid, run_id:Uuid, step_i
     let step_status:String=step.try_get("status")?;
     if step_status!="WAITING_APPROVAL" { return Err(AppError::Conflict("Step is not waiting for approval".into())); }
 
+    let outcome=if approved{"approved"}else{"declined"};
+    vars["approval"]=json!({"approved":approved,"outcome":outcome});
     sqlx::query("UPDATE automation_run_steps SET status='COMPLETED',completed_at=NOW(),output=$1 WHERE id=$2")
-        .bind(json!({"approved":true})).bind(step_id).execute(&state.pool).await?;
+        .bind(json!({"approved":approved,"outcome":outcome})).bind(step_id).execute(&state.pool).await?;
 
     let edges=sqlx::query("SELECT target_node_key,config FROM automation_edges WHERE automation_id=$1 AND source_node_key=$2")
         .bind(automation_id).bind(&key).fetch_all(&state.pool).await?;
@@ -235,6 +238,14 @@ pub async fn approve_run(state:&AppState, workspace_id:Uuid, run_id:Uuid, step_i
     }
     sqlx::query("UPDATE automation_runs SET status='COMPLETED',variables=$1,completed_at=NOW() WHERE id=$2").bind(vars).bind(run_id).execute(&state.pool).await?;
     Ok(())
+}
+
+pub async fn approve_run(state:&AppState, workspace_id:Uuid, run_id:Uuid, step_id:Uuid)->Result<(),AppError>{
+    resume_approval(state,workspace_id,run_id,step_id,true).await
+}
+
+pub async fn decline_run(state:&AppState, workspace_id:Uuid, run_id:Uuid, step_id:Uuid)->Result<(),AppError>{
+    resume_approval(state,workspace_id,run_id,step_id,false).await
 }
 
 pub async fn scheduler_tick(state:&AppState)->Result<(),AppError>{
