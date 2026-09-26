@@ -72,15 +72,15 @@ jobs:
         run: |
           set -euo pipefail
           curl --fail --silent --show-error \
-            -H "Authorization: Bearer \${ACCESS_TOKEN}" \
-            -H "x-workspace-id: \${WORKSPACE_ID}" \
-            "\${BASE_URL}/api/v1/automations" > existing-automations.json
+            -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+            -H "x-workspace-id: ${WORKSPACE_ID}" \
+            "${BASE_URL}/api/v1/automations" > existing-automations.json
           jq -r '.data[] | select(.name | startswith("PROD E2E ")) | .id' existing-automations.json | while read -r id; do
             [ -z "$id" ] && continue
             curl --fail --silent --show-error -X DELETE \
-              -H "Authorization: Bearer \${ACCESS_TOKEN}" \
-              -H "x-workspace-id: \${WORKSPACE_ID}" \
-              "\${BASE_URL}/api/v1/automations/\${id}" >/dev/null
+              -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+              -H "x-workspace-id: ${WORKSPACE_ID}" \
+              "${BASE_URL}/api/v1/automations/${id}" >/dev/null
           done
           echo "Old PROD E2E test automations cleaned."
 
@@ -272,37 +272,37 @@ jobs:
           # Run the same production workflow a second time and verify the Declined path.
           curl --fail --silent --show-error \
             -X POST \
-            -H "Authorization: Bearer \${ACCESS_TOKEN}" \
-            -H "x-workspace-id: \${WORKSPACE_ID}" \
+            -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+            -H "x-workspace-id: ${WORKSPACE_ID}" \
             -H "Content-Type: application/json" \
             -d '{"payload":{"source":"github-smoke-test","approval_outcome":"declined"}}' \
-            "\${BASE_URL}/api/v1/automations/\${APPROVAL_AUTOMATION_ID}/run" > approval-decline-run.json
+            "${BASE_URL}/api/v1/automations/${APPROVAL_AUTOMATION_ID}/run" > approval-decline-run.json
 
           APPROVAL_DECLINE_RUN_ID="$(jq -r '.data.run_id' approval-decline-run.json)"
-          test "\${APPROVAL_DECLINE_RUN_ID}" != "null"
+          test "${APPROVAL_DECLINE_RUN_ID}" != "null"
 
           sleep 1
           curl --fail --silent --show-error \
-            -H "Authorization: Bearer \${ACCESS_TOKEN}" \
-            -H "x-workspace-id: \${WORKSPACE_ID}" \
-            "\${BASE_URL}/api/v1/automations/runs/\${APPROVAL_DECLINE_RUN_ID}" > approval-decline-status.json
+            -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+            -H "x-workspace-id: ${WORKSPACE_ID}" \
+            "${BASE_URL}/api/v1/automations/runs/${APPROVAL_DECLINE_RUN_ID}" > approval-decline-status.json
 
           DECLINE_STEP_ID="$(jq -r '.data.steps[] | select(.node_type == "APPROVAL") | .id' approval-decline-status.json)"
-          test -n "\${DECLINE_STEP_ID}" && test "\${DECLINE_STEP_ID}" != "null"
+          test -n "${DECLINE_STEP_ID}" && test "${DECLINE_STEP_ID}" != "null"
           jq -e '.success == true and .data.status == "WAITING_APPROVAL"' approval-decline-status.json >/dev/null
 
           curl --fail --silent --show-error -X POST \
-            -H "Authorization: Bearer \${ACCESS_TOKEN}" \
-            -H "x-workspace-id: \${WORKSPACE_ID}" \
-            "\${BASE_URL}/api/v1/automations/runs/\${APPROVAL_DECLINE_RUN_ID}/steps/\${DECLINE_STEP_ID}/decline" > approval-decline-result.json
+            -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+            -H "x-workspace-id: ${WORKSPACE_ID}" \
+            "${BASE_URL}/api/v1/automations/runs/${APPROVAL_DECLINE_RUN_ID}/steps/${DECLINE_STEP_ID}/decline" > approval-decline-result.json
 
           jq -e '.success == true and .data.approved == false and .data.outcome == "declined"' approval-decline-result.json >/dev/null
 
           sleep 1
           curl --fail --silent --show-error \
-            -H "Authorization: Bearer \${ACCESS_TOKEN}" \
-            -H "x-workspace-id: \${WORKSPACE_ID}" \
-            "\${BASE_URL}/api/v1/automations/runs/\${APPROVAL_DECLINE_RUN_ID}" > approval-declined-completed.json
+            -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+            -H "x-workspace-id: ${WORKSPACE_ID}" \
+            "${BASE_URL}/api/v1/automations/runs/${APPROVAL_DECLINE_RUN_ID}" > approval-declined-completed.json
 
           jq -e '.success == true and .data.status == "COMPLETED" and (.data.steps | length) == 3' approval-declined-completed.json >/dev/null
           jq -e '.data.steps[] | select(.node_key == "declined") | .output.approval_test == "declined"' approval-declined-completed.json >/dev/null
@@ -314,11 +314,11 @@ jobs:
         shell: bash
         run: |
           set +e
-          for id in "\${AUTOMATION_ID:-}" "\${WEBHOOK_AUTOMATION_ID:-}" "\${APPROVAL_AUTOMATION_ID:-}"; do
+          for id in "${AUTOMATION_ID:-}" "${WEBHOOK_AUTOMATION_ID:-}" "${APPROVAL_AUTOMATION_ID:-}"; do
             [ -z "$id" ] || [ "$id" = "null" ] && continue
             curl --fail --silent --show-error -X DELETE \
-              -H "Authorization: Bearer \${ACCESS_TOKEN}" \
-              -H "x-workspace-id: \${WORKSPACE_ID}" \
-              "\${BASE_URL}/api/v1/automations/\${id}" >/dev/null || true
+              -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+              -H "x-workspace-id: ${WORKSPACE_ID}" \
+              "${BASE_URL}/api/v1/automations/${id}" >/dev/null || true
           done
           echo "Temporary PROD E2E automations removed."
