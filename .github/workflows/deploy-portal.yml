@@ -53,7 +53,7 @@ jobs:
             # certificate for the public website. Reuse it directly.
             CERT_DIR="/etc/letsencrypt/live/goldetech.com"
 
-            if [ ! -s "$CERT_DIR/fullchain.pem" ] || [ ! -s "$CERT_DIR/privkey.pem" ]; then
+            if ! sudo test -s "$CERT_DIR/fullchain.pem" || ! sudo test -s "$CERT_DIR/privkey.pem"; then
               echo "Expected public-site TLS certificate files are missing: $CERT_DIR" >&2
               sudo ls -la /etc/letsencrypt/live/ || true
               sudo nginx -T 2>&1 | grep -n -E 'server_name|ssl_certificate|root' || true
