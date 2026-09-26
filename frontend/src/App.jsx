@@ -173,6 +173,7 @@ function AutomationCanvas({ onBack, onSaved }) {
   const [edges,setEdges]=useState([]);
   const [selected,setSelected]=useState(null);
   const [connecting,setConnecting]=useState(null);
+  const [connectingOutcome,setConnectingOutcome]=useState(null);
   const [zoom,setZoom]=useState(1);
   const [saving,setSaving]=useState(false);
   const [notice,setNotice]=useState("");
@@ -197,9 +198,15 @@ function AutomationCanvas({ onBack, onSaved }) {
   };
   const connectNode=(targetId)=>{
     if(!connecting||connecting===targetId)return;
-    if(edges.some(e=>e.source===connecting&&e.target===targetId)){setConnecting(null);return;}
-    setEdges(prev=>[...prev,{id:"edge_"+Date.now(),source:connecting,target:targetId,config:{}}]);
-    setConnecting(null);
+    const sourceNode=nodes.find(n=>n.id===connecting);
+    const config=sourceNode?.node_type==="APPROVAL"&&connectingOutcome
+      ?{path:"approval.outcome",operator:"eq",value:connectingOutcome}:{};
+    if(edges.some(e=>e.source===connecting&&e.target===targetId&&JSON.stringify(e.config||{})===JSON.stringify(config))){setConnecting(null);setConnectingOutcome(null);return;}
+    setEdges(prev=>[...prev,{id:"edge_"+Date.now(),source:connecting,target:targetId,config}]);
+    setConnecting(null);setConnectingOutcome(null);
+  };
+  const startConnection=(nodeId,outcome=null)=>{
+    setConnecting(nodeId);setConnectingOutcome(outcome);setSelected(nodeId);
   };
   const removeEdge=(edgeId)=>setEdges(prev=>prev.filter(e=>e.id!==edgeId));
   const edgePoints=(edge)=>{
@@ -283,19 +290,24 @@ function AutomationCanvas({ onBack, onSaved }) {
       </aside>
 
       <section className="builder-canvas-wrap">
-        <div className="canvas-toolbar"><div className="canvas-hint">{connecting?"Select a target node to create a connection.":"Select a node to edit it. Use Connect in the node header to wire the workflow."}</div><div className="canvas-stats"><span>{nodes.length} nodes</span><span>{edges.length} connections</span></div></div>
+        <div className="canvas-toolbar"><div className="canvas-hint">{connecting?"Select a target node to create a connection"+(connectingOutcome?" for "+connectingOutcome:"")+".":"Select a node to edit it. Use Connect in the node header to wire the workflow."}</div><div className="canvas-stats"><span>{nodes.length} nodes</span><span>{edges.length} connections</span></div></div>
         <div className="workflow-canvas" onDragOver={e=>e.preventDefault()} onDrop={onCanvasDrop}>
           <div className="canvas-grid" style={{transform:"scale("+zoom+")",transformOrigin:"0 0"}}>
             <svg className="edge-layer" width="2000" height="1400">
               <defs><marker id="golde-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#8b63e8"/></marker></defs>
-              {edges.map(edge=>{const p=edgePoints(edge);return p&&<g key={edge.id} className="edge-line" onClick={()=>removeEdge(edge.id)}><path d={p.d} fill="none" stroke="#9b7be8" strokeWidth="2.5" markerEnd="url(#golde-arrow)"/><circle cx={(p.x1+p.x2)/2} cy={(p.y1+p.y2)/2} r="10" fill="#fff" stroke="#e2d9f3"/><text x={(p.x1+p.x2)/2} y={(p.y1+p.y2)/2+4} textAnchor="middle" fontSize="9" fill="#7d7690">×</text></g>})}
+              {edges.map(edge=>{const p=edgePoints(edge);const label=edge.config?.value==="approved"?"✓ Success":edge.config?.value==="declined"?"✕ Declined":"";return p&&<g key={edge.id} className="edge-line" onClick={()=>removeEdge(edge.id)}><path d={p.d} fill="none" stroke={edge.config?.value==="declined"?"#e24f68":"#9b7be8"} strokeWidth="2.5" markerEnd="url(#golde-arrow)"/><rect x={(p.x1+p.x2)/2-34} y={(p.y1+p.y2)/2-20} width="68" height="18" rx="9" fill="#fff" stroke="#e2d9f3"/><text x={(p.x1+p.x2)/2} y={(p.y1+p.y2)/2-8} textAnchor="middle" fontSize="8" fontWeight="700" fill={edge.config?.value==="declined"?"#c93854":"#6f43cf"}>{label||"× remove"}</text></g>})}
             </svg>
             {nodes.map(node=>{
               const def=nodeDef(node.node_type),I=def.icon;
               return <div key={node.id} className={"workflow-node "+(selected===node.id?"selected ":"")+(connecting===node.id?"connecting":"")} style={{left:node.position.x,top:node.position.y}} draggable onDragStart={e=>onNodeDragStart(e,node.id)} onClick={()=>connecting&&connecting!==node.id?connectNode(node.id):setSelected(node.id)}>
                 <div className="workflow-node-head"><i className={"node-tone "+def.tone}><I size={14}/></i><span>{node.node_type}</span><GripVertical size={14}/></div>
                 <strong>{node.name}</strong><small>{node.node_type==="APPROVAL"?"Human approval required":node.node_type==="IF"?"Branch on condition":node.config?.url||node.config?.content||def.description}</small>
-                <div className="node-connect-row"><button onClick={e=>{e.stopPropagation();setConnecting(node.id);setSelected(node.id)}}><ArrowRight size={12}/>{connecting===node.id?"Connecting…":"Connect"}</button></div>
+                <div className="node-connect-row">
+  {node.node_type==="APPROVAL"?<>
+    <button onClick={e=>{e.stopPropagation();startConnection(node.id,"approved")}} className="approval-connect approved"><Check size={11}/>Success</button>
+    <button onClick={e=>{e.stopPropagation();startConnection(node.id,"declined")}} className="approval-connect declined"><X size={11}/>Declined</button>
+  </>:<button onClick={e=>{e.stopPropagation();startConnection(node.id)}}><ArrowRight size={12}/>{connecting===node.id?"Connecting…":"Connect"}</button>}
+</div>
                 <span className="node-input"/><span className="node-output"/>
               </div>
             })}
@@ -325,8 +337,11 @@ function AutomationCanvas({ onBack, onSaved }) {
             </>}
             {selectedNode.node_type==="SET"&&<label className="inspector-label">Variable<input value={Object.keys(selectedNode.config?.values||{})[0]||"source"} onChange={e=>{const old=Object.keys(selectedNode.config?.values||{})[0]||"source";const val=selectedNode.config?.values?.[old]||"";updateNode(selectedNode.id,{config:{...selectedNode.config,values:{[e.target.value]:val}}})}}/><textarea value={Object.values(selectedNode.config?.values||{})[0]||""} onChange={e=>{const key=Object.keys(selectedNode.config?.values||{})[0]||"source";updateSetValue(selectedNode.id,key,e.target.value)}} placeholder="Value or {{variable}}"/></label>}
             {selectedNode.node_type.endsWith("TRIGGER")&&<div className="inspector-note">This node creates the corresponding enabled trigger when the workflow is saved.</div>}
-            {selectedNode.node_type==="APPROVAL"&&<div className="inspector-note">Execution pauses here until an OWNER or ADMIN approves the run.</div>}
-            <button className="command-btn compact full-btn" onClick={()=>setConnecting(selectedNode.id)}><ArrowRight size={14}/>{connecting===selectedNode.id?"Select target node":"Connect to next node"}</button>
+            {selectedNode.node_type==="APPROVAL"&&<div className="inspector-note">Execution pauses here. Connect the <b>Success</b> output and <b>Declined</b> output to different downstream nodes.</div>}
+            {selectedNode.node_type==="APPROVAL"?<div className="approval-connect-panel">
+  <button className="command-btn compact full-btn" onClick={()=>startConnection(selectedNode.id,"approved")}><Check size={14}/>Connect Success path</button>
+  <button className="ghost-btn compact full-btn" onClick={()=>startConnection(selectedNode.id,"declined")}><X size={14}/>Connect Declined path</button>
+</div>:<button className="command-btn compact full-btn" onClick={()=>startConnection(selectedNode.id)}><ArrowRight size={14}/>{connecting===selectedNode.id?"Select target node":"Connect to next node"}</button>}
           </div>}
       </aside>
     </div>
@@ -344,7 +359,8 @@ function AutomationsPage() {
   const act=async(id,action)=>{try{await automationsApi[action](id);setNotice("Automation published.");load();setTimeout(()=>setNotice(""),2500)}catch(e){setNotice(e?.response?.data?.error||e?.message||"Action failed.")}};
   const openRun=async(runId)=>{if(!runId)return;setRunLoading(true);setRunError("");try{setSelectedRun(unwrap(await automationsApi.getRun(runId)))}catch(e){setRunError(e?.response?.data?.error||e?.message||"Unable to load automation run.")}finally{setRunLoading(false)}};
   const runAutomation=async(id)=>{setNotice("");try{const data=unwrap(await automationsApi.run(id,{payload:{source:"GrowthOS manual test"}}));const runId=data?.run_id;if(!runId)throw new Error("Automation started but no run ID was returned.");setNotice("Automation run started.");await openRun(runId);setTimeout(()=>setNotice(""),2500)}catch(e){setNotice(e?.response?.data?.error||e?.message||"Automation run failed.")}};
-  const approveStep=async(step)=>{if(!selectedRun?.id||!step?.id)return;setApproving(true);setRunError("");try{await automationsApi.approveStep(selectedRun.id,step.id);await openRun(selectedRun.id);setNotice("Approval accepted. Execution resumed.");setTimeout(()=>setNotice(""),2500)}catch(e){setRunError(e?.response?.data?.error||e?.message||"Approval failed.")}finally{setApproving(false)}};
+  const approveStep=async(step)=>{if(!selectedRun?.id||!step?.id)return;setApproving(true);setRunError("");try{await automationsApi.approveStep(selectedRun.id,step.id);await openRun(selectedRun.id);setNotice("Approval accepted. Success path resumed.");setTimeout(()=>setNotice(""),2500)}catch(e){setRunError(e?.response?.data?.error||e?.message||"Approval failed.")}finally{setApproving(false)}};
+  const declineStep=async(step)=>{if(!selectedRun?.id||!step?.id)return;setApproving(true);setRunError("");try{await automationsApi.declineStep(selectedRun.id,step.id);await openRun(selectedRun.id);setNotice("Approval declined. Declined path resumed.");setTimeout(()=>setNotice(""),2500)}catch(e){setRunError(e?.response?.data?.error||e?.message||"Decline failed.")}finally{setApproving(false)}};
   const steps=Array.isArray(selectedRun?.steps)?selectedRun.steps:[];
 
   if(builder)return <AutomationCanvas onBack={()=>{setBuilder(false);load()}} onSaved={load}/>;
@@ -363,7 +379,7 @@ function AutomationsPage() {
       {runLoading?<div className="empty-state compact"><div className="spinner"/><h3>Loading run…</h3></div>:runError?<div className="alert error">{runError}</div>:selectedRun&&<>
         <div className="run-summary"><div><span>Status</span><strong className={selectedRun.status==="COMPLETED"?"run-success":selectedRun.status==="WAITING_APPROVAL"?"run-waiting":""}>{selectedRun.status||"UNKNOWN"}</strong></div><div><span>Run ID</span><strong>{selectedRun.id||"—"}</strong></div></div>
         <div className="run-steps"><div className="panel-head"><div><div className="panel-kicker">EXECUTION</div><h3>Steps</h3></div><button className="ghost-btn compact" onClick={()=>openRun(selectedRun.id)}>Refresh</button></div>
-        {steps.length===0?<div className="run-empty">No execution steps returned.</div>:steps.map((step,index)=><div className="run-step" key={step.id||step.node_key||index}><div className="run-step-number">{index+1}</div><div className="run-step-main"><strong>{step.node_key||step.node_type||"Step"}</strong><small>{step.node_type||"Automation step"}</small></div><span className={"run-step-status status-"+String(step.status||"").toLowerCase()}>{step.status||"UNKNOWN"}</span>{step.status==="WAITING_APPROVAL"&&<button className="command-btn compact" disabled={approving} onClick={()=>approveStep(step)}>{approving?"Approving…":"Approve"}</button>}</div>)}</div>
+        {steps.length===0?<div className="run-empty">No execution steps returned.</div>:steps.map((step,index)=><div className="run-step" key={step.id||step.node_key||index}><div className="run-step-number">{index+1}</div><div className="run-step-main"><strong>{step.node_key||step.node_type||"Step"}</strong><small>{step.node_type||"Automation step"}</small></div><span className={"run-step-status status-"+String(step.status||"").toLowerCase()}>{step.status||"UNKNOWN"}</span>{step.status==="WAITING_APPROVAL"&&<div className="run-approval-actions"><button className="command-btn compact" disabled={approving} onClick={()=>approveStep(step)}>{approving?"Working…":"✓ Approve"}</button><button className="ghost-btn compact decline-btn" disabled={approving} onClick={()=>declineStep(step)}>✕ Decline</button></div>}</div>)}</div>
       </>}
     </section></div>}
   </div>;
