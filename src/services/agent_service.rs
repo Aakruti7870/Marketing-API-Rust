@@ -323,13 +323,24 @@ pub async fn chat(
         .map_err(|e| AppError::ExternalService(format!("AI provider request failed: {}", e)))?;
 
     let status = response.status();
-    let payload: Value = response.json().await
-        .map_err(|e| AppError::ExternalService(format!("Invalid AI provider response: {}", e)))?;
+    let content_type = response.headers().get(reqwest::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok()).unwrap_or("");
+    let raw_body = response.text().await
+        .map_err(|e| AppError::ExternalService(format!("Failed reading AI provider response (HTTP {}): {}", status, e)))?;
+
+    let payload: Value = serde_json::from_str(&raw_body).map_err(|e| {
+        let preview: String = raw_body.chars().take(1000).collect();
+        AppError::ExternalService(format!(
+            "Invalid AI provider response (HTTP {}, content-type {}): {} | body: {}",
+            status, content_type, e, preview
+        ))
+    })?;
 
     if !status.is_success() {
         let message = payload.get("error").and_then(|e| e.get("message")).and_then(Value::as_str)
+            .or_else(|| payload.get("message").and_then(Value::as_str))
             .unwrap_or("AI provider returned an error");
-        return Err(AppError::ExternalService(message.to_string()));
+        return Err(AppError::ExternalService(format!("HTTP {}: {}", status, message)));
     }
 
     let reply = payload.get("output_text").and_then(Value::as_str).map(str::to_string)
