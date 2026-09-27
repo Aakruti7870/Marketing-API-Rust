@@ -251,6 +251,117 @@ CUSTOMER SCRIPT:
   </div>;
 }
 
+
+function CustomerInbox() {
+  const [agents,setAgents]=useState([]);
+  const [agentId,setAgentId]=useState("");
+  const [conversations,setConversations]=useState([]);
+  const [selected,setSelected]=useState(null);
+  const [detail,setDetail]=useState(null);
+  const [reply,setReply]=useState("");
+  const [loading,setLoading]=useState(true);
+  const [sending,setSending]=useState(false);
+  const [error,setError]=useState("");
+  const [notice,setNotice]=useState("");
+
+  const loadAgents=async()=>{
+    try{
+      const data=unwrap(await agentsApi.list())||[];
+      setAgents(data);
+      const active=data.find(a=>a.status==="ACTIVE");
+      setAgentId(prev=>prev||active?.id||"");
+    }catch(err){setError(err?.response?.data?.error||err?.message||"Could not load AI agents.");}
+  };
+
+  const loadConversations=async(id=agentId)=>{
+    if(!id)return;
+    try{
+      const data=unwrap(await agentsApi.conversations(id))||[];
+      setConversations(data);
+      if(selected){
+        const current=data.find(x=>x.id===selected.id);
+        if(current)setSelected(current);
+      }
+    }catch(err){setError(err?.response?.data?.error||err?.message||"Could not load customer conversations.");}
+  };
+
+  const openConversation=async(item)=>{
+    setSelected(item);setNotice("");setError("");
+    try{setDetail(unwrap(await agentsApi.conversation(item.id)));}
+    catch(err){setError(err?.response?.data?.error||err?.message||"Could not load conversation.");}
+  };
+
+  useEffect(()=>{loadAgents().finally(()=>setLoading(false));},[]);
+  useEffect(()=>{if(agentId){loadConversations(agentId);const timer=setInterval(()=>loadConversations(agentId),5000);return()=>clearInterval(timer);}},[agentId]);
+
+  const sendReply=async()=>{
+    if(!selected||!reply.trim()||sending)return;
+    const text=reply.trim();setSending(true);setError("");setNotice("");
+    try{
+      await agentsApi.replyToConversation(selected.id,{message:text});
+      setReply("");
+      const fresh=unwrap(await agentsApi.conversation(selected.id));
+      setDetail(fresh);
+      await loadConversations(agentId);
+      setNotice("Reply sent to the customer.");
+    }catch(err){
+      setError(err?.response?.data?.error||err?.message||"Could not send the customer reply.");
+    }finally{setSending(false);}
+  };
+
+  const selectedChannel=selected?.channel||"";
+  return <div>
+    <PageHeader
+      eyebrow="CUSTOMER INBOX"
+      title="Reply to your customers"
+      description="See AI and customer messages in one conversation, take over when needed, and reply from the connected business channel."
+      action={<button className="ghost-btn compact" onClick={()=>loadConversations()}><Activity size={15}/>Refresh</button>}
+    />
+    {error&&<div className="alert error">{error}</div>}
+    {notice&&<div className="alert success">{notice}</div>}
+
+    <section className="inbox-toolbar panel">
+      <div><span className="panel-kicker">AI AGENT</span><strong>Select the customer-service agent</strong></div>
+      <select value={agentId} onChange={e=>{setAgentId(e.target.value);setSelected(null);setDetail(null);}}>
+        <option value="">Select an active agent</option>
+        {agents.map(a=><option key={a.id} value={a.id}>{a.name} · {a.status}</option>)}
+      </select>
+    </section>
+
+    {!loading&&agents.filter(a=>a.status==="ACTIVE").length===0
+      ? <section className="panel empty-state"><div className="empty-icon"><Bot/></div><h3>No active customer-service agent</h3><p>Create and deploy an AI agent first. Customer conversations will appear here when a connected channel receives a message.</p></section>
+      : <section className="inbox-grid">
+          <div className="panel conversation-list">
+            <div className="panel-head"><div><span className="panel-kicker">INBOX</span><h2>{conversations.length} conversations</h2></div><MessageSquare size={18}/></div>
+            <div className="conversation-scroll">
+              {conversations.length===0?<div className="empty-state compact"><MessageSquare/><h3>No customer conversations yet</h3><p>Messages received by WhatsApp, Instagram or Facebook will appear here.</p></div>:
+              conversations.map(item=><button key={item.id} className={`conversation-item ${selected?.id===item.id?"selected":""}`} onClick={()=>openConversation(item)}>
+                <div className="conversation-avatar">{(item.contact_name||"C").slice(0,1).toUpperCase()}</div>
+                <div className="conversation-copy"><strong>{item.contact_name||item.external_user_id||"Customer"}</strong><small>{item.channel} · {item.contact_phone||item.external_user_id||""}</small><span>{item.last_message||"No messages yet"}</span></div>
+                <ChevronRight size={15}/>
+              </button>)}
+            </div>
+          </div>
+
+          <div className="panel conversation-detail">
+            {!detail?<div className="empty-state"><MessageSquare/><h3>Select a conversation</h3><p>Choose a customer on the left to view the complete thread.</p></div>:
+              <>
+                <div className="conversation-head"><div><span className="panel-kicker">{selectedChannel}</span><h2>{detail.conversation?.contact_name||selected?.contact_name||"Customer"}</h2><small>{detail.conversation?.contact_phone||detail.conversation?.external_user_id||"Customer channel"}</small></div><span className="status-pill">{detail.conversation?.status||"ACTIVE"}</span></div>
+                <div className="owner-chat">
+                  {(detail.messages||[]).map(m=><div key={m.id} className={`owner-message ${m.role==="user"?"customer":"business"}`}><span>{m.content}</span><small>{m.role==="user"?"Customer":m.metadata?.source==="OWNER"?"Business owner":"GOLD-e AI"}</small></div>)}
+                </div>
+                <div className="owner-reply-box">
+                  {selectedChannel==="WEBSITE"?<div className="inspector-note">Website owner replies are disabled until the widget has a realtime/polling reply transport. Meta customer channels support owner replies now.</div>:
+                  <><textarea value={reply} onChange={e=>setReply(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendReply();}}} placeholder="Write a reply to the customer…"/>
+                  <button className="primary-btn compact" disabled={sending||!reply.trim()} onClick={sendReply}>{sending?"Sending…":"Send reply"}<ArrowRight size={15}/></button></>}
+                </div>
+              </>
+            }
+          </div>
+        </section>}
+  </div>;
+}
+
 function SimplePage({ type }) {
   const [items,setItems]=useState([]); const [loading,setLoading]=useState(true);
   const configs={
@@ -537,6 +648,7 @@ export default function App() {
   else if(page==="automations") content=<AutomationsPage/>;
   else if(page==="agents") content=<AgentStudio/>;
   else if(page==="settings") content=<SettingsPage user={user}/>;
+  else if(page==="messages") content=<CustomerInbox/>;
   else content=<SimplePage type={page}/>;
 
   return <Shell user={user} onLogout={logout} page={page} setPage={setPage}>{content}</Shell>;
