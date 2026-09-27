@@ -146,6 +146,19 @@ pub async fn generate_image(
     Ok(json!({"id":id,"kind":kind,"title":title,"public_url":public_url}))
 }
 
+pub async fn list_groups(pool: &PgPool, workspace_id: Uuid) -> Result<Vec<Value>, AppError> {
+    let rows = sqlx::query(
+        "SELECT g.id,g.name,COUNT(gm.contact_id)::BIGINT AS contact_count
+         FROM contact_groups g LEFT JOIN contact_group_members gm ON gm.group_id=g.id
+         WHERE g.workspace_id=$1 GROUP BY g.id,g.name ORDER BY g.updated_at DESC"
+    ).bind(workspace_id).fetch_all(pool).await?;
+    Ok(rows.into_iter().map(|row| json!({
+        "id": row.get::<Uuid,_>("id"),
+        "name": row.get::<String,_>("name"),
+        "contact_count": row.get::<i64,_>("contact_count")
+    })).collect())
+}
+
 pub async fn list_assets(pool: &PgPool, workspace_id: Uuid) -> Result<Vec<Value>, AppError> {
     let rows = sqlx::query(
         "SELECT id,kind,title,content,mime_type,public_key,created_at FROM playground_assets
