@@ -1,16 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Activity, ArrowRight, BarChart3, Bot, Check, ChevronDown, ChevronLeft, ChevronRight, CircleHelp,
-  Command, ContactRound, LayoutDashboard, LogOut, Menu, MessageSquare,
+  Command, LayoutDashboard, LogOut, Menu, MessageSquare,
   Pause, Play, Plus, Rocket, Search, Settings, Sparkles, Target, Users, X, Zap,
   Clock3, Globe2, GitBranch, GripVertical, Save, ZoomIn, ZoomOut, Maximize2, Webhook, MousePointer2, PanelRight
 } from "lucide-react";
 import { authApi, dashboardApi, workspaceApi, agentsApi, campaignsApi, contactsApi, messagesApi, automationsApi, unwrap } from "./services/api";
+import Playground from "./Playground";
 import "./App.css";
 
 const NAV = [
   { id:"dashboard", label:"Command Center", icon:LayoutDashboard },
-  { id:"contacts", label:"Contacts", icon:ContactRound },
+  { id:"playground", label:"Playground", icon:Sparkles },
   { id:"campaigns", label:"Campaigns", icon:Target },
   { id:"messages", label:"WhatsApp", icon:MessageSquare },
   { id:"agents", label:"AI Agents", icon:Bot },
@@ -647,6 +648,7 @@ export default function App() {
   else if(page==="analytics") content=<Analytics/>;
   else if(page==="automations") content=<AutomationsPage/>;
   else if(page==="agents") content=<AgentStudio/>;
+  else if(page==="playground") content=<Playground/>;
   else if(page==="settings") content=<SettingsPage user={user}/>;
   else if(page==="messages") content=<CustomerInbox/>;
   else content=<SimplePage type={page}/>;
