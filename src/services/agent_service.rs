@@ -675,8 +675,7 @@ pub async fn owner_reply(
     let connection = sqlx::query_as::<_, AiAgentChannelConnection>(
         "SELECT * FROM ai_agent_channel_connections
          WHERE workspace_id=$1 AND agent_id=$2 AND channel=$3 AND status='ACTIVE'
-           AND (external_sender_id=$4 OR external_account_id=$4 OR external_sender_id IS NULL)
-         ORDER BY created_at DESC LIMIT 1"
+           ORDER BY created_at DESC LIMIT 1"
     ).bind(workspace_id).bind(conversation.agent_id).bind(&channel).bind(&recipient)
      .fetch_optional(pool).await?
      .ok_or_else(|| AppError::NotFound("No active customer-channel connection is configured for this conversation".into()))?;
@@ -718,7 +717,7 @@ pub async fn owner_reply(
     ).bind(conversation_id).bind(text)
      .bind(json!({"source":"OWNER","external_message_id":external_id}))
      .fetch_one(pool).await?;
-    sqlx::query("UPDATE ai_agent_conversations SET updated_at=NOW() WHERE id=$1")
+    sqlx::query("UPDATE ai_agent_conversations SET status='HUMAN',updated_at=NOW() WHERE id=$1")
         .bind(conversation_id).execute(pool).await?;
     Ok(saved)
 }
@@ -764,7 +763,7 @@ pub async fn handle_meta_inbound(
     let conversation_id: Uuid = if let Some(id) = sqlx::query_scalar(
         "SELECT id FROM ai_agent_conversations
          WHERE workspace_id=$1 AND agent_id=$2 AND channel=$3 AND external_user_id=$4
-           AND status <> 'CLOSED'
+           AND status='ACTIVE'
          ORDER BY updated_at DESC LIMIT 1"
     ).bind(connection.workspace_id).bind(connection.agent_id).bind(channel).bind(sender_id)
      .fetch_optional(pool).await? {
@@ -779,6 +778,22 @@ pub async fn handle_meta_inbound(
         ).bind(connection.workspace_id).bind(connection.agent_id).bind(contact_id).bind(channel).bind(sender_id)
          .fetch_one(pool).await?
     };
+
+    let current_status: String = sqlx::query_scalar(
+        "SELECT status FROM ai_agent_conversations WHERE id=$1"
+    ).bind(conversation_id).fetch_one(pool).await?;
+
+    if current_status == "HUMAN" {
+        sqlx::query(
+            "INSERT INTO ai_agent_messages (conversation_id,role,content,metadata)
+             VALUES ($1,'user',$2,$3)"
+        ).bind(conversation_id).bind(message)
+         .bind(json!({"source":"CUSTOMER","channel":channel}))
+         .execute(pool).await?;
+        sqlx::query("UPDATE ai_agent_conversations SET updated_at=NOW() WHERE id=$1")
+            .bind(conversation_id).execute(pool).await?;
+        return Ok("Customer message recorded for owner".into());
+    }
 
     let result=chat(pool,config,connection.workspace_id,connection.agent_id,AiAgentChatDto{
         conversation_id:Some(conversation_id), external_user_id:Some(sender_id.to_string()),
