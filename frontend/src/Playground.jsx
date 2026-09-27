@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Bot, Image, Mail, MessageSquare, Search, Sparkles, Send, Copy, Check,
-  Share2, RefreshCw, Wand2, FileText
+  Share2, RefreshCw, Wand2, FileText, Upload
 } from "lucide-react";
 import { agentsApi, playgroundApi, unwrap } from "./services/api";
 import "./Playground.css";
