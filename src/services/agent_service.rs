@@ -763,7 +763,7 @@ pub async fn handle_meta_inbound(
     let conversation_id: Uuid = if let Some(id) = sqlx::query_scalar(
         "SELECT id FROM ai_agent_conversations
          WHERE workspace_id=$1 AND agent_id=$2 AND channel=$3 AND external_user_id=$4
-           AND status='ACTIVE'
+           AND status <> 'CLOSED'
          ORDER BY updated_at DESC LIMIT 1"
     ).bind(connection.workspace_id).bind(connection.agent_id).bind(channel).bind(sender_id)
      .fetch_optional(pool).await? {
