@@ -6,7 +6,7 @@ import {
   Clock3, Globe2, GitBranch, GripVertical, Save, ZoomIn, ZoomOut, Maximize2, Webhook, MousePointer2, PanelRight
 } from "lucide-react";
 import { authApi, dashboardApi, workspaceApi, agentsApi, campaignsApi, contactsApi, messagesApi, automationsApi, unwrap } from "./services/api";
-import Playground from "./Playground";
+import Playground, { ChannelContactImporter } from "./Playground";
 import "./App.css";
 
 const NAV = [
@@ -245,7 +245,7 @@ CUSTOMER SCRIPT:
       <label className="inspector-label">Display name<input value={channelForm.display_name} onChange={e=>setChannelForm({...channelForm,display_name:e.target.value})}/></label>
       {channelNotice&&<div className={"alert "+(channelNotice.includes("active")?"success":"error")}>{channelNotice}</div>}
       <button className="primary-btn full-btn" disabled={channelBusy||(channelForm.channel!=="WEBSITE"&&!channelForm.secret)} onClick={deployChannel}>{channelBusy?"Deploying…":`Activate ${channelForm.channel}`}<Rocket size={15}/></button>
-      <div className="deployment-list"><div className="panel-kicker">ACTIVE CONNECTIONS</div>{channels.length?channels.map(c=><div className="deployment-row" key={c.id}><span className="status-pill">{c.channel}</span><span>{c.display_name||c.external_account_id||"Connected"}</span><small>{c.secret_configured?"Credential secured":"Public deployment"}</small></div>):<span className="muted">No channels connected yet.</span>}</div>
+      <div className="deployment-list"><div className="panel-kicker">ACTIVE CONNECTIONS</div>{channels.length?channels.map(c=><div className="deployment-row" key={c.id}><span className="status-pill">{c.channel}</span><span>{c.display_name||c.external_account_id||"Connected"}</span><small>{c.secret_configured?"Credential secured":"Public deployment"}</small></div>):<span className="muted">No channels connected yet.</span>}</div><ChannelContactImporter channel={channels.find(c=>c.channel===channelForm.channel&&c.status==="ACTIVE")}/>
     </div></div>}
 
     {chatAgent&&<div className="agent-modal-backdrop" onClick={()=>setChatAgent(null)}><div className="agent-chat-modal" onClick={e=>e.stopPropagation()}><div className="run-modal-head"><div><div className="panel-kicker">LIVE CUSTOMER TEST</div><h2>{chatAgent.name}</h2><span>{chatAgent.role}</span></div><button className="icon-circle" onClick={()=>setChatAgent(null)}><X size={17}/></button></div><div className="agent-chat-messages">{messages.length===0?<div className="agent-chat-empty"><Bot size={28}/><strong>Test the customer experience</strong><span>Try: “I need an appointment tomorrow morning.”</span></div>:messages.map((m,i)=><div key={i} className={"chat-bubble "+m.role}><span>{m.content}</span></div>)}{chatting&&<div className="chat-bubble assistant"><span>Thinking…</span></div>}</div><div className="agent-chat-input"><input value={message} onChange={e=>setMessage(e.target.value)} onKeyDown={e=>e.key==="Enter"&&sendMessage()} placeholder="Talk to your AI agent…"/><button className="primary-btn compact" onClick={sendMessage} disabled={chatting||!message.trim()}><ArrowRight size={16}/></button></div></div></div>}
