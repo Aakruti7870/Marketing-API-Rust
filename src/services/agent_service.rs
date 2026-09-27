@@ -676,7 +676,7 @@ pub async fn owner_reply(
         "SELECT * FROM ai_agent_channel_connections
          WHERE workspace_id=$1 AND agent_id=$2 AND channel=$3 AND status='ACTIVE'
            ORDER BY created_at DESC LIMIT 1"
-    ).bind(workspace_id).bind(conversation.agent_id).bind(&channel).bind(&recipient)
+    ).bind(workspace_id).bind(conversation.agent_id).bind(&channel)
      .fetch_optional(pool).await?
      .ok_or_else(|| AppError::NotFound("No active customer-channel connection is configured for this conversation".into()))?;
 
