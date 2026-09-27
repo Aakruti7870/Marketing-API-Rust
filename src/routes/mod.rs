@@ -4,6 +4,7 @@ pub mod contacts;
 pub mod campaigns;
 pub mod messages;
 pub mod agents;
+pub mod public_agents;
 pub mod analytics;
 pub mod webhooks;
 pub mod automations;
@@ -22,6 +23,7 @@ pub fn create_api_router(state: AppState) -> Router {
         .nest("/api/v1/campaigns", campaigns::routes(state.clone()))
         .nest("/api/v1/messages", messages::routes(state.clone()))
         .nest("/api/v1/agents", agents::routes(state.clone()))
+        .nest("/api/public/agents", public_agents::routes(state.clone()))
         .nest("/api/v1/analytics", analytics::routes(state.clone()))
         .nest("/api/v1/webhooks", webhooks::routes(state.clone()))
 .nest("/api/v1/automations", automations::routes(state.clone()))
