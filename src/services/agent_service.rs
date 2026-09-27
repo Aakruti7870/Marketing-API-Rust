@@ -324,7 +324,7 @@ pub async fn chat(
 
     let status = response.status();
     let content_type = response.headers().get(reqwest::header::CONTENT_TYPE)
-        .and_then(|v| v.to_str().ok()).unwrap_or("");
+        .and_then(|v| v.to_str().ok()).unwrap_or("").to_string();
     let raw_body = response.text().await
         .map_err(|e| AppError::ExternalService(format!("Failed reading AI provider response (HTTP {}): {}", status, e)))?;
 
