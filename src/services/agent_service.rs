@@ -113,6 +113,7 @@ pub fn templates() -> Vec<AgentTemplate> {
     ]
 }
 
+#[allow(clippy::too_many_arguments)]
 fn template(
     key: &'static str,
     name: &'static str,
@@ -314,7 +315,7 @@ pub async fn chat(
         }
     }
 
-    let messages: Vec<Value> = input.iter().cloned().collect();
+    let messages: Vec<Value> = input.to_vec();
     let mut messages = messages;
     messages.insert(0, json!({
         "role": "system",
@@ -625,11 +626,7 @@ pub async fn handle_meta_inbound(
             "message":{"text":result.reply}
         }),
     };
-    let target_id=if channel=="WHATSAPP" {
-        connection.external_account_id.as_deref().unwrap_or(external_account_id)
-    } else {
-        connection.external_account_id.as_deref().unwrap_or(external_account_id)
-    };
+    let target_id = connection.external_account_id.as_deref().unwrap_or(external_account_id);
     let url=format!("https://graph.facebook.com/v20.0/{}/messages",target_id);
     let response=http.post(url).bearer_auth(token).json(&payload).send().await
         .map_err(|e|AppError::ExternalService(format!("Meta send failed: {}",e)))?;
