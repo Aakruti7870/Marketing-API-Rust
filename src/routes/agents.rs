@@ -1,7 +1,7 @@
 use crate::error::AppError;
 use crate::middleware::{require_workspace_roles, TenantContext};
 use crate::models::{
-    AiAgentChatDto, CreateAgentRunDto, CreateAiAgentDto, StepApprovalDto, StepRejectionDto,
+    AiAgentChatDto, CreateAgentRunDto, CreateAiAgentDto, CreateChannelConnectionDto, PublicAgentChatDto, StepApprovalDto, StepRejectionDto,
     UpdateAiAgentDto,
 };
 use crate::services::agent_service;
@@ -23,6 +23,8 @@ pub fn routes(state: AppState) -> Router {
         .route("/templates", get(list_templates))
         .route("/:id", get(get_agent).put(update_agent).delete(delete_agent))
         .route("/:id/chat", post(chat))
+        .route("/:id/channels", get(list_channels).post(create_channel))
+        .route("/channels/:channel_id", delete(delete_channel))
         .route("/runs", get(list_runs).post(create_run))
         .route("/runs/:id", get(get_run))
         .route("/runs/:id/steps/:stepId/approve", post(approve_step))
@@ -108,6 +110,40 @@ async fn chat(
         agent_service::chat(&state.pool, &state.config, tenant.workspace_id, id, dto).await?,
         "AI agent response generated",
     ))
+}
+
+async fn list_channels(
+    State(state): State<AppState>,
+    tenant: TenantContext,
+    Path(id): Path<Uuid>,
+) -> Result<impl IntoResponse, AppError> {
+    Ok(json_success(
+        agent_service::list_channel_connections(&state.pool, tenant.workspace_id, id).await?,
+        "Agent channels retrieved",
+    ))
+}
+
+async fn create_channel(
+    State(state): State<AppState>,
+    tenant: TenantContext,
+    Path(id): Path<Uuid>,
+    Json(dto): Json<CreateChannelConnectionDto>,
+) -> Result<impl IntoResponse, AppError> {
+    require_workspace_roles(&tenant.workspace_role, &["OWNER", "ADMIN"])?;
+    Ok(json_success(
+        agent_service::create_channel_connection(&state.pool, &state.config, tenant.workspace_id, id, dto).await?,
+        "Agent channel deployed",
+    ))
+}
+
+async fn delete_channel(
+    State(state): State<AppState>,
+    tenant: TenantContext,
+    Path(channel_id): Path<Uuid>,
+) -> Result<impl IntoResponse, AppError> {
+    require_workspace_roles(&tenant.workspace_role, &["OWNER", "ADMIN"])?;
+    agent_service::delete_channel_connection(&state.pool, tenant.workspace_id, channel_id).await?;
+    Ok(json_success(serde_json::json!({"id": channel_id, "deleted": true}), "Agent channel removed"))
 }
 
 async fn list_runs(
