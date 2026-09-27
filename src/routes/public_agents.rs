@@ -31,7 +31,7 @@ async fn chat(
 
 
 async fn widget(Path(public_key): Path<String>) -> Response {
-    let key=public_key.replace('\\', "").replace('"', "");
+    let key=public_key.replace(['\\', '"'], "");
     let script=format!(r#"
 (() => {{
   const KEY = "{key}";
