@@ -4,7 +4,7 @@ use axum::{
     extract::{Query, State},
     http::StatusCode,
     response::IntoResponse,
-    routing::get,
+    routing::{get, post},
     Json, Router,
 };
 use serde::Deserialize;
@@ -13,6 +13,7 @@ use tracing::info;
 pub fn routes(state: AppState) -> Router {
     Router::new()
         .route("/whatsapp", get(verify_whatsapp_webhook).post(handle_whatsapp_webhook))
+        .route("/meta", get(verify_meta_webhook).post(handle_meta_webhook))
         .with_state(state)
 }
 
@@ -69,4 +70,63 @@ async fn handle_whatsapp_webhook(
     }
 
     (StatusCode::OK, Json(serde_json::json!({ "status": "received" })))
+}
+
+
+async fn verify_meta_webhook(
+    State(state): State<AppState>,
+    Query(query): Query<WebhookVerificationQuery>,
+) -> Result<impl IntoResponse, AppError> {
+    let mode=query.hub_mode.as_deref();
+    let token=query.hub_verify_token.as_deref();
+    let challenge=query.hub_challenge.unwrap_or_default();
+    if mode==Some("subscribe") && token==Some(&state.config.whatsapp_webhook_verify_token) {
+        Ok((StatusCode::OK,challenge))
+    } else {
+        Err(AppError::Forbidden("Webhook verification token mismatch".into()))
+    }
+}
+
+async fn handle_meta_webhook(
+    State(state): State<AppState>,
+    Json(payload): Json<serde_json::Value>,
+) -> impl IntoResponse {
+    if let Some(entries)=payload.get("entry").and_then(|v|v.as_array()) {
+        for entry in entries {
+            let account_id=entry.get("id").and_then(|v|v.as_str()).unwrap_or_default();
+            if let Some(changes)=entry.get("changes").and_then(|v|v.as_array()) {
+                for change in changes {
+                    let value=&change["value"];
+                    if let Some(messages)=value.get("messages").and_then(|v|v.as_array()) {
+                        for message in messages {
+                            let sender=message.get("from").and_then(|v|v.as_str()).unwrap_or_default();
+                            let text=message.get("text").and_then(|v|v.get("body")).and_then(|v|v.as_str());
+                            if !sender.is_empty() {
+                                if let Some(body)=text {
+                                    let account=value.get("metadata").and_then(|v|v.get("phone_number_id")).and_then(|v|v.as_str()).unwrap_or(account_id);
+                                    if let Err(err)=crate::services::agent_service::handle_meta_inbound(&state.pool,&state.config,"WHATSAPP",account,sender,body).await {
+                                        tracing::error!("AI WhatsApp inbound handling failed: {}",err);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            if let Some(messages)=entry.get("messaging").and_then(|v|v.as_array()) {
+                for event in messages {
+                    let sender=event.get("sender").and_then(|v|v.get("id")).and_then(|v|v.as_str()).unwrap_or_default();
+                    let text=event.get("message").and_then(|v|v.get("text")).and_then(|v|v.as_str());
+                    if sender.is_empty() { continue; }
+                    if let Some(body)=text {
+                        let channel=if payload.get("object").and_then(|v|v.as_str())==Some("instagram") { "INSTAGRAM" } else { "FACEBOOK" };
+                        if let Err(err)=crate::services::agent_service::handle_meta_inbound(&state.pool,&state.config,channel,account_id,sender,body).await {
+                            tracing::error!("AI {} inbound handling failed: {}",channel,err);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    (StatusCode::OK, Json(serde_json::json!({"status":"received"})))
 }
