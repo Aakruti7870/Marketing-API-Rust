@@ -152,3 +152,63 @@ pub struct AiAgentChatResponse {
     pub reply: String,
     pub model: String,
 }
+
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct AiAgentChannelConnection {
+    pub id: Uuid,
+    pub workspace_id: Uuid,
+    pub agent_id: Uuid,
+    pub channel: String,
+    pub provider: String,
+    pub status: String,
+    pub external_account_id: Option<String>,
+    pub external_sender_id: Option<String>,
+    pub display_name: Option<String>,
+    pub config: serde_json::Value,
+    pub secret_ciphertext: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CreateChannelConnectionDto {
+    pub channel: String,
+    pub provider: Option<String>,
+    pub external_account_id: Option<String>,
+    pub external_sender_id: Option<String>,
+    pub display_name: Option<String>,
+    pub secret: Option<String>,
+    pub config: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ChannelConnectionResponse {
+    pub id: Uuid,
+    pub agent_id: Uuid,
+    pub channel: String,
+    pub provider: String,
+    pub status: String,
+    pub external_account_id: Option<String>,
+    pub external_sender_id: Option<String>,
+    pub display_name: Option<String>,
+    pub config: serde_json::Value,
+    pub secret_configured: bool,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PublicAgentChatDto {
+    pub conversation_id: Option<Uuid>,
+    pub visitor_id: Option<String>,
+    pub message: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct PublicAgentChatResponse {
+    pub conversation_id: Uuid,
+    pub reply: String,
+    pub agent_name: String,
+    pub channel: String,
+}
