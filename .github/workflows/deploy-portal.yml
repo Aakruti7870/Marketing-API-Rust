@@ -1,6 +1,11 @@
 name: Deploy GOLD-e GrowthOS Portal
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - "frontend/**"
+      - ".github/workflows/deploy-portal.yml"
   workflow_dispatch:
 
 jobs:
