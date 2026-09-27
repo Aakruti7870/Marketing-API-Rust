@@ -198,6 +198,22 @@ export const automationsApi = {
   delete: (id) => api.delete(`/automations/${id}`),
 };
 
+export const playgroundApi = {
+  generate: (payload) => api.post("/playground/generate", payload),
+  generateImage: (payload) => api.post("/playground/image", payload),
+  assets: () => api.get("/playground/assets"),
+  shareWhatsApp: (payload) => api.post("/playground/share-whatsapp", payload),
+  importContacts: (channelId, file, groupName) => {
+    const form = new FormData();
+    form.append("file", file);
+    form.append("group_name", groupName || file?.name?.replace(/\\.[^.]+$/, "") || "Imported Contacts");
+    return api.post("/playground/channels/"+channelId+"/import-contacts", form, {
+      headers: { "Content-Type": "multipart/form-data" },
+      timeout: 60000,
+    });
+  },
+};
+
 export default api;
 
 
