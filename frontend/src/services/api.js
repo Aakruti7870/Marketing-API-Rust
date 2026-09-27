@@ -141,6 +141,13 @@ export const dashboardApi = {
 };
 
 export const agentsApi = {
+  list: () => api.get("/agents"),
+  templates: () => api.get("/agents/templates"),
+  get: (id) => api.get(`/agents/${id}`),
+  createAgent: (payload) => api.post("/agents", payload),
+  updateAgent: (id, payload) => api.put(`/agents/${id}`, payload),
+  deleteAgent: (id) => api.delete(`/agents/${id}`),
+  chat: (id, payload) => api.post(`/agents/${id}/chat`, payload),
   runs: (params = {}) => api.get("/agents/runs", { params }),
   run: (id) => api.get(`/agents/runs/${id}`),
   create: (payload) => api.post("/agents/runs", payload),
