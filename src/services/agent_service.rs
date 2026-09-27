@@ -594,3 +594,47 @@ pub async fn public_chat(pool:&PgPool, config:&Config, public_key:&str, dto:Publ
     }).await?;
     Ok(PublicAgentChatResponse{conversation_id:result.conversation_id,reply:result.reply,agent_name:agent.name,channel:"WEBSITE".into()})
 }
+
+
+pub async fn handle_meta_inbound(
+    pool:&PgPool, config:&Config, channel:&str, external_account_id:&str, sender_id:&str, message:&str
+)->Result<String,AppError>{
+    let connection=sqlx::query_as::<_,AiAgentChannelConnection>(
+        "SELECT * FROM ai_agent_channel_connections
+         WHERE channel=$1 AND external_account_id=$2 AND status='ACTIVE'
+         ORDER BY created_at DESC LIMIT 1"
+    ).bind(channel).bind(external_account_id).fetch_optional(pool).await?
+     .ok_or_else(||AppError::NotFound("No active AI agent channel connection found".into()))?;
+
+    let secret=connection.secret_ciphertext.as_deref().ok_or_else(||AppError::BadRequest("Channel access token is not configured".into()))?;
+    let token=decrypt_channel_secret(config,secret)?;
+    let result=chat(pool,config,connection.workspace_id,connection.agent_id,AiAgentChatDto{
+        conversation_id:None, external_user_id:Some(sender_id.to_string()),
+        channel:Some(channel.to_string()), message:message.to_string()
+    }).await?;
+
+    let http=Client::new();
+    let payload=match channel {
+        "WHATSAPP" => json!({
+            "messaging_product":"whatsapp","to":sender_id,"type":"text",
+            "text":{"preview_url":false,"body":result.reply}
+        }),
+        _ => json!({
+            "recipient":{"id":sender_id},
+            "message":{"text":result.reply}
+        }),
+    };
+    let target_id=if channel=="WHATSAPP" {
+        connection.external_account_id.as_deref().unwrap_or(external_account_id)
+    } else {
+        connection.external_account_id.as_deref().unwrap_or(external_account_id)
+    };
+    let url=format!("https://graph.facebook.com/v20.0/{}/messages",target_id);
+    let response=http.post(url).bearer_auth(token).json(&payload).send().await
+        .map_err(|e|AppError::ExternalService(format!("Meta send failed: {}",e)))?;
+    if !response.status().is_success() {
+        let body=response.text().await.unwrap_or_default();
+        return Err(AppError::ExternalService(format!("Meta send error: {}",body)));
+    }
+    Ok(result.reply)
+}
