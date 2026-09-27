@@ -151,7 +151,7 @@ async fn public_asset(
     Path(public_key): Path<String>,
 ) -> Result<Response<Body>, AppError> {
     let row = sqlx::query_as::<_, (Option<Vec<u8>>, Option<String>)>(
-        "SELECT media_data, mime_type, public_key FROM playground_assets WHERE public_key=$1"
+        "SELECT media_data, mime_type FROM playground_assets WHERE public_key=$1"
     )
     .bind(&public_key)
     .fetch_optional(&state.pool)
