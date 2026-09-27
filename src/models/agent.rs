@@ -82,6 +82,9 @@ pub struct AiAgent {
     pub created_by_id: Uuid,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    pub public_key: Option<String>,
+    pub welcome_message: Option<String>,
+    pub handoff_message: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
@@ -211,4 +214,24 @@ pub struct PublicAgentChatResponse {
     pub reply: String,
     pub agent_name: String,
     pub channel: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct AgentConversationSummary {
+    pub id: Uuid,
+    pub agent_id: Uuid,
+    pub channel: String,
+    pub external_user_id: Option<String>,
+    pub status: String,
+    pub contact_id: Option<Uuid>,
+    pub contact_name: Option<String>,
+    pub contact_phone: Option<String>,
+    pub last_message: Option<String>,
+    pub last_message_role: Option<String>,
+    pub last_message_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct OwnerReplyDto {
+    pub message: String,
 }
