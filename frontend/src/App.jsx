@@ -128,6 +128,114 @@ function Dashboard({ setPage }) {
   </div>;
 }
 
+
+function AgentStudio() {
+  const [templates,setTemplates]=useState([]);
+  const [agents,setAgents]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const [selectedTemplate,setSelectedTemplate]=useState(null);
+  const [name,setName]=useState("");
+  const [creating,setCreating]=useState(false);
+  const [error,setError]=useState("");
+  const [chatAgent,setChatAgent]=useState(null);
+  const [message,setMessage]=useState("");
+  const [messages,setMessages]=useState([]);
+  const [chatting,setChatting]=useState(false);
+
+  const load=async()=>{
+    setLoading(true); setError("");
+    try{
+      const [t,a]=await Promise.all([agentsApi.templates(),agentsApi.list()]);
+      setTemplates(unwrap(t)||[]); setAgents(unwrap(a)||[]);
+    }catch(err){
+      setError(err?.response?.data?.error||err?.message||"Could not load AI agents.");
+    }finally{setLoading(false);}
+  };
+  useEffect(()=>{load()},[]);
+
+  const createFromTemplate=async()=>{
+    if(!selectedTemplate||!name.trim()) return;
+    setCreating(true); setError("");
+    try{
+      await agentsApi.createAgent({name:name.trim(),template_key:selectedTemplate.key});
+      setSelectedTemplate(null); setName(""); await load();
+    }catch(err){setError(err?.response?.data?.error||err?.message||"Could not create agent.");}
+    finally{setCreating(false);}
+  };
+
+  const deploy=async(agent)=>{
+    setError("");
+    try{await agentsApi.updateAgent(agent.id,{status:"ACTIVE"});await load();}
+    catch(err){setError(err?.response?.data?.error||err?.message||"Could not deploy agent.");}
+  };
+
+  const remove=async(agent)=>{
+    if(!window.confirm("Delete this AI agent?")) return;
+    try{await agentsApi.deleteAgent(agent.id);if(chatAgent?.id===agent.id)setChatAgent(null);await load();}
+    catch(err){setError(err?.response?.data?.error||err?.message||"Could not delete agent.");}
+  };
+
+  const sendMessage=async()=>{
+    if(!chatAgent||!message.trim()||chatting) return;
+    const text=message.trim(); setMessage(""); setMessages(prev=>[...prev,{role:"user",content:text}]); setChatting(true);
+    try{
+      const response=await agentsApi.chat(chatAgent.id,{message:text,channel:"WEB_CHAT"});
+      const data=unwrap(response);
+      setMessages(prev=>[...prev,{role:"assistant",content:data.reply||"No response returned."}]);
+    }catch(err){
+      setMessages(prev=>[...prev,{role:"error",content:err?.response?.data?.error||err?.message||"AI provider is not configured."}]);
+    }finally{setChatting(false);}
+  };
+
+  return <div>
+    <PageHeader eyebrow="AI AGENT STUDIO" title="AI Agents" description="Deploy customer-facing AI workers for healthcare, education, hospitality, accommodation, infrastructure, property and sales." action={<button className="primary-btn compact" onClick={()=>templates[0]&&setSelectedTemplate(templates[0])}><Plus size={16}/>Create AI agent</button>}/>
+    {error&&<div className="alert error">{error}</div>}
+    <section className="agent-hero panel">
+      <div>
+        <div className="panel-kicker"><Bot size={14}/> MULTI-INDUSTRY AGENTS</div>
+        <h2>One agent engine. Any business.</h2>
+        <p>Choose a proven business template, connect your tools and deploy an AI front desk or sales representative. Agents can hand work to your existing Automation Engine.</p>
+      </div>
+      <div className="agent-hero-stats"><strong>{agents.length}</strong><span>workspace agents</span><strong>{templates.length}</strong><span>ready templates</span></div>
+    </section>
+
+    <section className="agent-section">
+      <div className="section-title"><div><div className="panel-kicker">TEMPLATES</div><h2>Start from a business role</h2></div><span>8 production-ready starting points</span></div>
+      <div className="agent-template-grid">
+        {loading?<div className="panel empty-state"><div className="spinner"/><h3>Loading agent templates</h3></div>:templates.map(t=><button className="agent-template-card" key={t.key} onClick={()=>{setSelectedTemplate(t);setName(t.name);}}>
+          <div className="agent-template-icon"><Bot size={20}/></div>
+          <div><strong>{t.name}</strong><small>{t.description}</small></div>
+          <span className="agent-template-industry">{t.industry}</span>
+        </button>)}
+      </div>
+    </section>
+
+    <section className="agent-section">
+      <div className="section-title"><div><div className="panel-kicker">DEPLOYED AGENTS</div><h2>Your AI workforce</h2></div></div>
+      {agents.length===0?<div className="panel empty-state compact"><div className="empty-icon"><Bot/></div><h3>No AI agents deployed yet.</h3><p>Pick a template above to create your first healthcare receptionist, admissions counsellor, hotel front desk, property agent or sales representative.</p></div>:
+      <div className="agent-list">{agents.map(agent=><div className="agent-card panel" key={agent.id}>
+        <div className="agent-card-icon"><Bot size={20}/></div>
+        <div className="agent-card-main"><div className="agent-card-title"><strong>{agent.name}</strong><span className={agent.status==="ACTIVE"?"status-pill":"status-pill draft"}>{agent.status}</span></div><small>{agent.role} · {agent.industry}</small><p>{agent.description}</p><div className="agent-capabilities">{(Array.isArray(agent.capabilities)?agent.capabilities:[]).slice(0,5).map(x=><span key={x}>{String(x).replaceAll("_"," ")}</span>)}</div></div>
+        <div className="agent-card-actions">{agent.status!=="ACTIVE"&&<button className="primary-btn compact" onClick={()=>deploy(agent)}><Rocket size={14}/>Deploy</button>}<button className="ghost-btn compact" disabled={agent.status!=="ACTIVE"} onClick={()=>{setChatAgent(agent);setMessages([])}}><MessageSquare size={14}/>Test chat</button><button className="ghost-btn compact danger" onClick={()=>remove(agent)}><X size={14}/></button></div>
+      </div>)}</div>}
+    </section>
+
+    {selectedTemplate&&<div className="agent-modal-backdrop" onClick={()=>setSelectedTemplate(null)}><div className="agent-modal" onClick={e=>e.stopPropagation()}>
+      <div className="run-modal-head"><div><div className="panel-kicker">CREATE AGENT</div><h2>{selectedTemplate.name}</h2></div><button className="icon-circle" onClick={()=>setSelectedTemplate(null)}><X size={17}/></button></div>
+      <label className="inspector-label">Agent name<input value={name} onChange={e=>setName(e.target.value)} autoFocus/></label>
+      <div className="agent-template-detail"><strong>{selectedTemplate.role}</strong><p>{selectedTemplate.description}</p><div className="agent-capabilities">{(selectedTemplate.capabilities||[]).map(x=><span key={x}>{String(x).replaceAll("_"," ")}</span>)}</div></div>
+      <div className="inspector-note">The agent is created as DRAFT. Deploy it after reviewing its role and configured capabilities. Live chat requires an AI provider key on the backend.</div>
+      <button className="primary-btn full-btn" disabled={creating||!name.trim()} onClick={createFromTemplate}>{creating?"Creating…":"Create agent"}<ChevronRight size={16}/></button>
+    </div></div>}
+
+    {chatAgent&&<div className="agent-modal-backdrop" onClick={()=>setChatAgent(null)}><div className="agent-chat-modal" onClick={e=>e.stopPropagation()}>
+      <div className="run-modal-head"><div><div className="panel-kicker">LIVE AGENT TEST</div><h2>{chatAgent.name}</h2><span>{chatAgent.role}</span></div><button className="icon-circle" onClick={()=>setChatAgent(null)}><X size={17}/></button></div>
+      <div className="agent-chat-messages">{messages.length===0?<div className="agent-chat-empty"><Bot size={28}/><strong>Test the deployed agent</strong><span>Try: “I need an appointment tomorrow morning.”</span></div>:messages.map((m,i)=><div key={i} className={"chat-bubble "+m.role}><span>{m.content}</span></div>)}{chatting&&<div className="chat-bubble assistant"><span>Thinking…</span></div>}</div>
+      <div className="agent-chat-input"><input value={message} onChange={e=>setMessage(e.target.value)} onKeyDown={e=>e.key==="Enter"&&sendMessage()} placeholder="Talk to your AI agent…"/><button className="primary-btn compact" onClick={sendMessage} disabled={chatting||!message.trim()}><ArrowRight size={16}/></button></div>
+    </div></div>}
+  </div>;
+}
+
 function SimplePage({ type }) {
   const [items,setItems]=useState([]); const [loading,setLoading]=useState(true);
   const configs={
@@ -412,6 +520,7 @@ export default function App() {
   if(page==="dashboard") content=<Dashboard setPage={setPage}/>;
   else if(page==="analytics") content=<Analytics/>;
   else if(page==="automations") content=<AutomationsPage/>;
+  else if(page==="agents") content=<AgentStudio/>;
   else if(page==="settings") content=<SettingsPage user={user}/>;
   else content=<SimplePage type={page}/>;
 
