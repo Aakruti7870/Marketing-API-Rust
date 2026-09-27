@@ -1,7 +1,7 @@
 use crate::error::AppError;
 use crate::middleware::{require_workspace_roles, TenantContext};
 use crate::models::{
-    AiAgentChatDto, CreateAgentRunDto, CreateAiAgentDto, CreateChannelConnectionDto, StepApprovalDto, StepRejectionDto,
+    AiAgentChatDto, CreateAgentRunDto, CreateAiAgentDto, CreateChannelConnectionDto, OwnerReplyDto, StepApprovalDto, StepRejectionDto,
     UpdateAiAgentDto,
 };
 use crate::services::agent_service;
@@ -23,6 +23,9 @@ pub fn routes(state: AppState) -> Router {
         .route("/templates", get(list_templates))
         .route("/:id", get(get_agent).put(update_agent).delete(delete_agent))
         .route("/:id/chat", post(chat))
+        .route("/:id/conversations", get(list_conversations))
+        .route("/conversations/:conversation_id", get(get_conversation))
+        .route("/conversations/:conversation_id/reply", post(owner_reply))
         .route("/:id/channels", get(list_channels).post(create_channel))
         .route("/channels/:channel_id", delete(delete_channel))
         .route("/runs", get(list_runs).post(create_run))
@@ -109,6 +112,44 @@ async fn chat(
     Ok(json_success(
         agent_service::chat(&state.pool, &state.config, tenant.workspace_id, id, dto).await?,
         "AI agent response generated",
+    ))
+}
+
+async fn list_conversations(
+    State(state): State<AppState>,
+    tenant: TenantContext,
+    Path(id): Path<Uuid>,
+) -> Result<impl IntoResponse, AppError> {
+    Ok(json_success(
+        agent_service::list_agent_conversations(&state.pool, tenant.workspace_id, id).await?,
+        "Customer conversations retrieved",
+    ))
+}
+
+async fn get_conversation(
+    State(state): State<AppState>,
+    tenant: TenantContext,
+    Path(conversation_id): Path<Uuid>,
+) -> Result<impl IntoResponse, AppError> {
+    let (conversation, messages) = agent_service::get_agent_conversation(
+        &state.pool, tenant.workspace_id, conversation_id
+    ).await?;
+    Ok(json_success(
+        serde_json::json!({"conversation":conversation,"messages":messages}),
+        "Customer conversation retrieved",
+    ))
+}
+
+async fn owner_reply(
+    State(state): State<AppState>,
+    tenant: TenantContext,
+    Path(conversation_id): Path<Uuid>,
+    Json(dto): Json<OwnerReplyDto>,
+) -> Result<impl IntoResponse, AppError> {
+    require_workspace_roles(&tenant.workspace_role, &["OWNER", "ADMIN", "MEMBER"])?;
+    Ok(json_success(
+        agent_service::owner_reply(&state.pool, &state.config, tenant.workspace_id, conversation_id, dto).await?,
+        "Customer reply sent",
     ))
 }
 

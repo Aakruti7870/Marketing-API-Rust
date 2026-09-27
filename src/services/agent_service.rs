@@ -368,6 +368,8 @@ pub async fn chat(
     sqlx::query(
         "INSERT INTO ai_agent_messages (conversation_id,role,content) VALUES ($1,'assistant',$2)"
     ).bind(conversation_id).bind(&reply).execute(pool).await?;
+    sqlx::query("UPDATE ai_agent_conversations SET updated_at=NOW() WHERE id=$1")
+        .bind(conversation_id).execute(pool).await?;
 
     Ok(AiAgentChatResponse {
         conversation_id,
@@ -586,6 +588,140 @@ pub async fn delete_channel_connection(pool:&PgPool, workspace_id:Uuid, id:Uuid)
     Ok(())
 }
 
+
+// List customer conversations for the business owner console.
+pub async fn list_agent_conversations(
+    pool: &PgPool,
+    workspace_id: Uuid,
+    agent_id: Uuid,
+) -> Result<Vec<crate::models::AgentConversationSummary>, AppError> {
+    let _agent = get_agent(pool, workspace_id, agent_id).await?;
+    Ok(sqlx::query_as::<_, crate::models::AgentConversationSummary>(
+        "SELECT c.id, c.agent_id, c.channel, c.external_user_id, c.status, c.contact_id,
+                NULLIF(trim(concat_ws(' ', ct.first_name, ct.last_name)), '') AS contact_name,
+                ct.phone AS contact_phone,
+                lm.content AS last_message,
+                lm.role AS last_message_role,
+                lm.created_at AS last_message_at
+         FROM ai_agent_conversations c
+         LEFT JOIN contacts ct ON ct.id=c.contact_id AND ct.workspace_id=c.workspace_id
+         LEFT JOIN LATERAL (
+             SELECT content, role, created_at
+             FROM ai_agent_messages
+             WHERE conversation_id=c.id
+             ORDER BY created_at DESC
+             LIMIT 1
+         ) lm ON TRUE
+         WHERE c.workspace_id=$1 AND c.agent_id=$2
+         ORDER BY COALESCE(lm.created_at,c.updated_at) DESC"
+    )
+    .bind(workspace_id).bind(agent_id).fetch_all(pool).await?)
+}
+
+pub async fn get_agent_conversation(
+    pool: &PgPool,
+    workspace_id: Uuid,
+    conversation_id: Uuid,
+) -> Result<(crate::models::AgentConversationSummary, Vec<AiAgentMessage>), AppError> {
+    let conversation = sqlx::query_as::<_, crate::models::AgentConversationSummary>(
+        "SELECT c.id, c.agent_id, c.channel, c.external_user_id, c.status, c.contact_id,
+                NULLIF(trim(concat_ws(' ', ct.first_name, ct.last_name)), '') AS contact_name,
+                ct.phone AS contact_phone,
+                lm.content AS last_message,
+                lm.role AS last_message_role,
+                lm.created_at AS last_message_at
+         FROM ai_agent_conversations c
+         LEFT JOIN contacts ct ON ct.id=c.contact_id AND ct.workspace_id=c.workspace_id
+         LEFT JOIN LATERAL (
+             SELECT content, role, created_at
+             FROM ai_agent_messages
+             WHERE conversation_id=c.id
+             ORDER BY created_at DESC
+             LIMIT 1
+         ) lm ON TRUE
+         WHERE c.id=$1 AND c.workspace_id=$2"
+    )
+    .bind(conversation_id).bind(workspace_id).fetch_optional(pool).await?
+    .ok_or_else(|| AppError::NotFound("Customer conversation not found".into()))?;
+    let messages = sqlx::query_as::<_, AiAgentMessage>(
+        "SELECT * FROM ai_agent_messages WHERE conversation_id=$1 ORDER BY created_at ASC"
+    ).bind(conversation_id).fetch_all(pool).await?;
+    Ok((conversation, messages))
+}
+
+pub async fn owner_reply(
+    pool: &PgPool,
+    config: &Config,
+    workspace_id: Uuid,
+    conversation_id: Uuid,
+    dto: crate::models::OwnerReplyDto,
+) -> Result<AiAgentMessage, AppError> {
+    let text = dto.message.trim();
+    if text.is_empty() { return Err(AppError::Validation("message is required".into())); }
+    if text.len() > 4000 { return Err(AppError::Validation("message is too long".into())); }
+
+    let conversation = sqlx::query_as::<_, AiAgentConversation>(
+        "SELECT * FROM ai_agent_conversations WHERE id=$1 AND workspace_id=$2"
+    ).bind(conversation_id).bind(workspace_id).fetch_optional(pool).await?
+     .ok_or_else(|| AppError::NotFound("Customer conversation not found".into()))?;
+
+    let channel = conversation.channel.to_uppercase();
+    let recipient = conversation.external_user_id.clone()
+        .ok_or_else(|| AppError::BadRequest("Customer channel recipient is missing".into()))?;
+    if channel == "WEBSITE" {
+        return Err(AppError::BadRequest("Website owner replies are not supported by the current widget transport. Use a Meta customer channel or the AI handoff flow.".into()));
+    }
+
+    let connection = sqlx::query_as::<_, AiAgentChannelConnection>(
+        "SELECT * FROM ai_agent_channel_connections
+         WHERE workspace_id=$1 AND agent_id=$2 AND channel=$3 AND status='ACTIVE'
+           ORDER BY created_at DESC LIMIT 1"
+    ).bind(workspace_id).bind(conversation.agent_id).bind(&channel)
+     .fetch_optional(pool).await?
+     .ok_or_else(|| AppError::NotFound("No active customer-channel connection is configured for this conversation".into()))?;
+
+    let secret = connection.secret_ciphertext.as_deref()
+        .ok_or_else(|| AppError::BadRequest("Channel access token is not configured".into()))?;
+    let token = decrypt_channel_secret(config, secret)?;
+    let target_id = connection.external_account_id.as_deref()
+        .ok_or_else(|| AppError::BadRequest("Channel account ID is not configured".into()))?;
+
+    let payload = match channel.as_str() {
+        "WHATSAPP" => json!({
+            "messaging_product":"whatsapp","to":recipient,"type":"text",
+            "text":{"preview_url":false,"body":text}
+        }),
+        "INSTAGRAM" | "FACEBOOK" => json!({
+            "recipient":{"id":recipient},"message":{"text":text}
+        }),
+        _ => return Err(AppError::BadRequest("Unsupported owner reply channel".into())),
+    };
+
+    let url = format!("https://graph.facebook.com/v20.0/{}/messages", target_id);
+    let response = Client::new().post(url).bearer_auth(token).json(&payload).send().await
+        .map_err(|e| AppError::ExternalService(format!("Meta owner reply failed: {}", e)))?;
+    let status = response.status();
+    let body: Value = response.json().await.unwrap_or_else(|_| json!({}));
+    if !status.is_success() {
+        let detail = body.get("error").and_then(|e| e.get("message")).and_then(Value::as_str)
+            .unwrap_or("Meta rejected the owner reply");
+        return Err(AppError::ExternalService(format!("HTTP {}: {}", status, detail)));
+    }
+
+    let external_id = body.get("messages").and_then(Value::as_array).and_then(|a| a.first())
+        .and_then(|m| m.get("id")).and_then(Value::as_str).map(str::to_string);
+
+    let saved = sqlx::query_as::<_, AiAgentMessage>(
+        "INSERT INTO ai_agent_messages (conversation_id,role,content,metadata)
+         VALUES ($1,'assistant',$2,$3) RETURNING *"
+    ).bind(conversation_id).bind(text)
+     .bind(json!({"source":"OWNER","external_message_id":external_id}))
+     .fetch_one(pool).await?;
+    sqlx::query("UPDATE ai_agent_conversations SET status='HUMAN',updated_at=NOW() WHERE id=$1")
+        .bind(conversation_id).execute(pool).await?;
+    Ok(saved)
+}
+
 pub async fn public_chat(pool:&PgPool, config:&Config, public_key:&str, dto:PublicAgentChatDto)->Result<PublicAgentChatResponse,AppError>{
     let agent=sqlx::query_as::<_,AiAgent>("SELECT * FROM ai_agents WHERE public_key=$1 AND status='ACTIVE'")
         .bind(public_key).fetch_optional(pool).await?
@@ -610,8 +746,57 @@ pub async fn handle_meta_inbound(
 
     let secret=connection.secret_ciphertext.as_deref().ok_or_else(||AppError::BadRequest("Channel access token is not configured".into()))?;
     let token=decrypt_channel_secret(config,secret)?;
+
+    let contact_id: Option<Uuid> = sqlx::query_scalar(
+        "SELECT id FROM contacts WHERE workspace_id=$1
+         AND regexp_replace(phone,'\\D','','g')=regexp_replace($2,'\\D','','g')
+         ORDER BY created_at ASC LIMIT 1"
+    ).bind(connection.workspace_id).bind(sender_id).fetch_optional(pool).await?;
+
+    let contact_id = if let Some(id) = contact_id { Some(id) } else {
+        Some(sqlx::query_scalar::<_,Uuid>(
+            "INSERT INTO contacts (workspace_id,first_name,phone,status)
+             VALUES ($1,$2,$3,'ACTIVE') RETURNING id"
+        ).bind(connection.workspace_id).bind("Customer").bind(sender_id).fetch_one(pool).await?)
+    };
+
+    let conversation_id: Uuid = if let Some(id) = sqlx::query_scalar(
+        "SELECT id FROM ai_agent_conversations
+         WHERE workspace_id=$1 AND agent_id=$2 AND channel=$3 AND external_user_id=$4
+           AND status <> 'CLOSED'
+         ORDER BY updated_at DESC LIMIT 1"
+    ).bind(connection.workspace_id).bind(connection.agent_id).bind(channel).bind(sender_id)
+     .fetch_optional(pool).await? {
+        sqlx::query("UPDATE ai_agent_conversations SET contact_id=$2,updated_at=NOW() WHERE id=$1")
+            .bind(id).bind(contact_id).execute(pool).await?;
+        id
+    } else {
+        sqlx::query_scalar::<_,Uuid>(
+            "INSERT INTO ai_agent_conversations
+             (workspace_id,agent_id,contact_id,channel,external_user_id)
+             VALUES ($1,$2,$3,$4,$5) RETURNING id"
+        ).bind(connection.workspace_id).bind(connection.agent_id).bind(contact_id).bind(channel).bind(sender_id)
+         .fetch_one(pool).await?
+    };
+
+    let current_status: String = sqlx::query_scalar(
+        "SELECT status FROM ai_agent_conversations WHERE id=$1"
+    ).bind(conversation_id).fetch_one(pool).await?;
+
+    if current_status == "HUMAN" {
+        sqlx::query(
+            "INSERT INTO ai_agent_messages (conversation_id,role,content,metadata)
+             VALUES ($1,'user',$2,$3)"
+        ).bind(conversation_id).bind(message)
+         .bind(json!({"source":"CUSTOMER","channel":channel}))
+         .execute(pool).await?;
+        sqlx::query("UPDATE ai_agent_conversations SET updated_at=NOW() WHERE id=$1")
+            .bind(conversation_id).execute(pool).await?;
+        return Ok("Customer message recorded for owner".into());
+    }
+
     let result=chat(pool,config,connection.workspace_id,connection.agent_id,AiAgentChatDto{
-        conversation_id:None, external_user_id:Some(sender_id.to_string()),
+        conversation_id:Some(conversation_id), external_user_id:Some(sender_id.to_string()),
         channel:Some(channel.to_string()), message:message.to_string()
     }).await?;
 
