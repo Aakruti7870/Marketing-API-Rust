@@ -63,3 +63,92 @@ pub struct StepApprovalDto {
 pub struct StepRejectionDto {
     pub reason: String,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct AiAgent {
+    pub id: Uuid,
+    pub workspace_id: Uuid,
+    pub name: String,
+    pub template_key: String,
+    pub industry: String,
+    pub role: String,
+    pub description: Option<String>,
+    pub status: String,
+    pub system_prompt: String,
+    pub capabilities: serde_json::Value,
+    pub tools: serde_json::Value,
+    pub channels: serde_json::Value,
+    pub settings: serde_json::Value,
+    pub created_by_id: Uuid,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct AiAgentConversation {
+    pub id: Uuid,
+    pub workspace_id: Uuid,
+    pub agent_id: Uuid,
+    pub contact_id: Option<Uuid>,
+    pub channel: String,
+    pub external_user_id: Option<String>,
+    pub status: String,
+    pub metadata: serde_json::Value,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct AiAgentMessage {
+    pub id: Uuid,
+    pub conversation_id: Uuid,
+    pub role: String,
+    pub content: String,
+    pub tool_name: Option<String>,
+    pub metadata: serde_json::Value,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CreateAiAgentDto {
+    pub name: String,
+    pub template_key: String,
+    pub industry: Option<String>,
+    pub role: Option<String>,
+    pub description: Option<String>,
+    pub system_prompt: Option<String>,
+    pub capabilities: Option<serde_json::Value>,
+    pub tools: Option<serde_json::Value>,
+    pub channels: Option<serde_json::Value>,
+    pub settings: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UpdateAiAgentDto {
+    pub name: Option<String>,
+    pub industry: Option<String>,
+    pub role: Option<String>,
+    pub description: Option<String>,
+    pub status: Option<String>,
+    pub system_prompt: Option<String>,
+    pub capabilities: Option<serde_json::Value>,
+    pub tools: Option<serde_json::Value>,
+    pub channels: Option<serde_json::Value>,
+    pub settings: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AiAgentChatDto {
+    pub conversation_id: Option<Uuid>,
+    pub external_user_id: Option<String>,
+    pub channel: Option<String>,
+    pub message: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct AiAgentChatResponse {
+    pub conversation_id: Uuid,
+    pub agent_id: Uuid,
+    pub reply: String,
+    pub model: String,
+}
