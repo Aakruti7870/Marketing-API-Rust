@@ -19,6 +19,10 @@ pub struct Config {
     pub whatsapp_business_account_id: Option<String>,
     pub whatsapp_webhook_verify_token: String,
     pub whatsapp_app_secret: Option<String>,
+    pub ai_api_key: Option<String>,
+    pub ai_api_base_url: String,
+    pub ai_model: String,
+    pub ai_temperature: f32,
 }
 
 impl Config {
@@ -83,6 +87,10 @@ impl Config {
         let whatsapp_webhook_verify_token = env::var("WHATSAPP_WEBHOOK_VERIFY_TOKEN")
             .unwrap_or_else(|_| "growthos_secure_webhook_verify_token".to_string());
         let whatsapp_app_secret = env::var("WHATSAPP_APP_SECRET").ok();
+        let ai_api_key = env::var("AI_API_KEY").ok();
+        let ai_api_base_url = env::var("AI_API_BASE_URL").unwrap_or_else(|_| "https://api.openai.com/v1".to_string());
+        let ai_model = env::var("AI_MODEL").unwrap_or_else(|_| "gpt-5.6-luna".to_string());
+        let ai_temperature = env::var("AI_TEMPERATURE").ok().and_then(|v| v.parse::<f32>().ok()).unwrap_or(0.2);
 
         Ok(Self {
             port,
@@ -102,6 +110,10 @@ impl Config {
             whatsapp_business_account_id,
             whatsapp_webhook_verify_token,
             whatsapp_app_secret,
+            ai_api_key,
+            ai_api_base_url,
+            ai_model,
+            ai_temperature,
         })
     }
 }
