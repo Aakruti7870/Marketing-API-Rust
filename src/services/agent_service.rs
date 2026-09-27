@@ -302,7 +302,7 @@ pub async fn chat(
         if msg.role == "user" || msg.role == "assistant" {
             input.push(json!({
                 "role": msg.role,
-                "content": [{"type": if msg.role == "user" {"input_text"} else {"output_text"}, "text": msg.content}]
+                "content": msg.content
             }));
         }
     }
