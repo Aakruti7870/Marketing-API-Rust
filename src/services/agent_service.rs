@@ -307,15 +307,21 @@ pub async fn chat(
         }
     }
 
+    let messages: Vec<Value> = input.iter().cloned().collect();
+    let mut messages = messages;
+    messages.insert(0, json!({
+        "role": "system",
+        "content": agent.system_prompt
+    }));
+
     let body = json!({
         "model": model,
-        "instructions": agent.system_prompt,
-        "input": input,
+        "messages": messages,
         "temperature": config.ai_temperature
     });
 
     let response = Client::new()
-        .post(format!("{}/responses", base_url))
+        .post(format!("{}/chat/completions", base_url))
         .bearer_auth(api_key)
         .json(&body)
         .send()
@@ -343,16 +349,12 @@ pub async fn chat(
         return Err(AppError::ExternalService(format!("HTTP {}: {}", status, message)));
     }
 
-    let reply = payload.get("output_text").and_then(Value::as_str).map(str::to_string)
-        .or_else(|| {
-            payload.get("output").and_then(Value::as_array).and_then(|items| {
-                items.iter().find_map(|item| {
-                    item.get("content").and_then(Value::as_array).and_then(|content| {
-                        content.iter().find_map(|part| part.get("text").and_then(Value::as_str).map(str::to_string))
-                    })
-                })
-            })
-        })
+    let reply = payload.get("choices").and_then(Value::as_array)
+        .and_then(|choices| choices.first())
+        .and_then(|choice| choice.get("message"))
+        .and_then(|message| message.get("content"))
+        .and_then(Value::as_str)
+        .map(str::to_string)
         .ok_or_else(|| AppError::ExternalService("AI provider returned no text output".into()))?;
 
     sqlx::query(
