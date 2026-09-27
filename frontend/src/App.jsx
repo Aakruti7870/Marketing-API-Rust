@@ -134,6 +134,7 @@ function AgentStudio() {
   const [agents,setAgents]=useState([]);
   const [loading,setLoading]=useState(true);
   const [selectedTemplate,setSelectedTemplate]=useState(null);
+  const [createOpen,setCreateOpen]=useState(false);
   const [name,setName]=useState("");
   const [creating,setCreating]=useState(false);
   const [error,setError]=useState("");
@@ -152,6 +153,10 @@ function AgentStudio() {
     }finally{setLoading(false);}
   };
   useEffect(()=>{load()},[]);
+  useEffect(()=>{ if(createOpen && !selectedTemplate && templates.length) { setSelectedTemplate(templates[0]); setName(templates[0].name); } },[createOpen,selectedTemplate,templates]);
+
+  const openCreate=()=>{ setError(""); setCreateOpen(true); if(templates.length){setSelectedTemplate(templates[0]);setName(templates[0].name);} };
+  const closeCreate=()=>{ setCreateOpen(false); setSelectedTemplate(null); setName(""); };
 
   const createFromTemplate=async()=>{
     if(!selectedTemplate||!name.trim()) return;
@@ -188,7 +193,7 @@ function AgentStudio() {
   };
 
   return <div>
-    <PageHeader eyebrow="AI AGENT STUDIO" title="AI Agents" description="Deploy customer-facing AI workers for healthcare, education, hospitality, accommodation, infrastructure, property and sales." action={<button className="primary-btn compact" onClick={()=>templates[0]&&setSelectedTemplate(templates[0])}><Plus size={16}/>Create AI agent</button>}/>
+    <PageHeader eyebrow="AI AGENT STUDIO" title="AI Agents" description="Deploy customer-facing AI workers for healthcare, education, hospitality, accommodation, infrastructure, property and sales." action={<button className="primary-btn compact" onClick={openCreate}><Plus size={16}/>Create AI agent</button>}/>
     {error&&<div className="alert error">{error}</div>}
     <section className="agent-hero panel">
       <div>
@@ -220,12 +225,14 @@ function AgentStudio() {
       </div>)}</div>}
     </section>
 
-    {selectedTemplate&&<div className="agent-modal-backdrop" onClick={()=>setSelectedTemplate(null)}><div className="agent-modal" onClick={e=>e.stopPropagation()}>
-      <div className="run-modal-head"><div><div className="panel-kicker">CREATE AGENT</div><h2>{selectedTemplate.name}</h2></div><button className="icon-circle" onClick={()=>setSelectedTemplate(null)}><X size={17}/></button></div>
-      <label className="inspector-label">Agent name<input value={name} onChange={e=>setName(e.target.value)} autoFocus/></label>
-      <div className="agent-template-detail"><strong>{selectedTemplate.role}</strong><p>{selectedTemplate.description}</p><div className="agent-capabilities">{(selectedTemplate.capabilities||[]).map(x=><span key={x}>{String(x).replaceAll("_"," ")}</span>)}</div></div>
-      <div className="inspector-note">The agent is created as DRAFT. Deploy it after reviewing its role and configured capabilities. Live chat requires an AI provider key on the backend.</div>
-      <button className="primary-btn full-btn" disabled={creating||!name.trim()} onClick={createFromTemplate}>{creating?"Creating…":"Create agent"}<ChevronRight size={16}/></button>
+    {createOpen&&<div className="agent-modal-backdrop" onClick={closeCreate}><div className="agent-modal" onClick={e=>e.stopPropagation()}>
+      <div className="run-modal-head"><div><div className="panel-kicker">CREATE AGENT</div><h2>{selectedTemplate?selectedTemplate.name:"Choose an agent template"}</h2></div><button className="icon-circle" onClick={closeCreate}><X size={17}/></button></div>
+      {!selectedTemplate?<div className="agent-create-picker">{loading?<div className="empty-state compact"><div className="spinner"/><h3>Loading templates…</h3></div>:templates.map(t=><button className="agent-template-card" key={t.key} onClick={()=>{setSelectedTemplate(t);setName(t.name);}}><div className="agent-template-icon"><Bot size={20}/></div><div><strong>{t.name}</strong><small>{t.description}</small></div><span className="agent-template-industry">{t.industry}</span></button>)}</div>:<>
+        <label className="inspector-label">Agent name<input value={name} onChange={e=>setName(e.target.value)} autoFocus/></label>
+        <div className="agent-template-detail"><strong>{selectedTemplate.role}</strong><p>{selectedTemplate.description}</p><div className="agent-capabilities">{(selectedTemplate.capabilities||[]).map(x=><span key={x}>{String(x).replaceAll("_"," ")}</span>)}</div></div>
+        <div className="inspector-note">The agent is created as DRAFT. Deploy it after reviewing its role and configured capabilities. Live chat requires an AI provider key on the backend.</div>
+        <button className="primary-btn full-btn" disabled={creating||!name.trim()} onClick={createFromTemplate}>{creating?"Creating…":"Create agent"}<ChevronRight size={16}/></button>
+      </>}
     </div></div>}
 
     {chatAgent&&<div className="agent-modal-backdrop" onClick={()=>setChatAgent(null)}><div className="agent-chat-modal" onClick={e=>e.stopPropagation()}>
