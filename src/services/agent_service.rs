@@ -1,12 +1,15 @@
 use crate::config::Config;
 use crate::error::AppError;
 use crate::models::{
-    AgentRun, AgentRunWithSteps, AgentStep, AiAgent, AiAgentChatDto, AiAgentChatResponse,
+    AgentRun, AgentRunWithSteps, AgentStep, AiAgent, AiAgentChatDto, AiAgentChatResponse, AiAgentChannelConnection, ChannelConnectionResponse, CreateChannelConnectionDto, PublicAgentChatDto, PublicAgentChatResponse,
     AiAgentConversation, AiAgentMessage, CreateAgentRunDto, CreateAiAgentDto, StepApprovalDto,
     StepRejectionDto, UpdateAiAgentDto,
 };
 use crate::utils::pagination::{PaginationMeta, PaginationQuery};
 use reqwest::Client;
+use aes_gcm::{aead::{Aead, KeyInit}, Aes256Gcm, Nonce};
+use base64::{engine::general_purpose::STANDARD as B64, Engine as _};
+use sha2::{Digest, Sha256};
 use serde::Serialize;
 use serde_json::{json, Value};
 use sqlx::PgPool;
@@ -165,6 +168,7 @@ pub async fn create_agent(
         .ok_or_else(|| AppError::Validation("Unknown AI agent template".into()))?;
 
     let id = Uuid::new_v4();
+    let public_key = Uuid::new_v4().to_string().replace("-", "");
     let industry = dto.industry.unwrap_or_else(|| tpl.industry.to_string());
     let role = dto.role.unwrap_or_else(|| tpl.role.to_string());
     let description = dto.description.or_else(|| Some(tpl.description.to_string()));
@@ -175,8 +179,8 @@ pub async fn create_agent(
 
     sqlx::query_as::<_, AiAgent>(
         "INSERT INTO ai_agents
-         (id,workspace_id,name,template_key,industry,role,description,status,system_prompt,capabilities,tools,channels,settings,created_by_id)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,'DRAFT',$8,$9,$10,$11,$12,$13)
+         (id,workspace_id,name,template_key,industry,role,description,status,system_prompt,capabilities,tools,channels,settings,created_by_id,public_key,welcome_message,handoff_message)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,'DRAFT',$8,$9,$10,$11,$12,$13,$14,$15,$16)
          RETURNING *"
     )
     .bind(id)
@@ -192,6 +196,9 @@ pub async fn create_agent(
     .bind(channels)
     .bind(dto.settings.unwrap_or_else(|| json!({})))
     .bind(user_id)
+    .bind(&public_key)
+    .bind("Hi! I'm the AI assistant for this business. How can I help you today?")
+    .bind("I'll connect you with a member of our team for that request.")
     .fetch_one(pool)
     .await
     .map_err(AppError::from)
