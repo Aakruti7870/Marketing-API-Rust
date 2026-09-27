@@ -520,7 +520,8 @@ fn channel_key(config: &Config) -> Result<[u8; 32], AppError> {
 fn encrypt_channel_secret(config: &Config, secret: &str) -> Result<String, AppError> {
     let key = channel_key(config)?;
     let cipher = Aes256Gcm::new_from_slice(&key).map_err(|_| AppError::BadRequest("Invalid channel encryption key".into()))?;
-    let nonce_bytes = &Uuid::new_v4().as_bytes()[..12];
+    let nonce_uuid = Uuid::new_v4();
+    let nonce_bytes = &nonce_uuid.as_bytes()[..12];
     let nonce = Nonce::from_slice(nonce_bytes);
     let ciphertext = cipher.encrypt(nonce, secret.as_bytes())
         .map_err(|_| AppError::ExternalService("Unable to encrypt channel credential".into()))?;
