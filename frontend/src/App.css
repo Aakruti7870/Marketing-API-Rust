@@ -180,3 +180,32 @@
 .deployment-row small{color:#8a8093}
 .alert.success{border-color:#c9ead7;background:#f2fbf5;color:#237547}
 @media(max-width:760px){.channel-grid{grid-template-columns:repeat(2,1fr)}.deployment-row{grid-template-columns:1fr}.agent-modal.wide{width:calc(100vw - 24px)}}
+
+
+/* Customer inbox */
+.inbox-toolbar{display:flex;align-items:center;justify-content:space-between;gap:18px;margin-bottom:16px;padding:16px 18px}
+.inbox-toolbar strong{display:block;margin-top:3px}
+.inbox-toolbar select{min-width:260px;border:1px solid #ddd4e8;border-radius:10px;padding:10px 12px;background:#fff;color:#30263a}
+.inbox-grid{display:grid;grid-template-columns:minmax(300px,380px) minmax(0,1fr);gap:16px;min-height:620px}
+.conversation-list,.conversation-detail{overflow:hidden}
+.conversation-scroll{max-height:560px;overflow:auto}
+.conversation-item{width:100%;display:flex;align-items:center;gap:11px;padding:13px 15px;border:0;border-top:1px solid #eee8f4;background:#fff;text-align:left;cursor:pointer}
+.conversation-item:hover,.conversation-item.selected{background:#faf7ff}
+.conversation-avatar{width:38px;height:38px;border-radius:50%;display:grid;place-items:center;background:#eee8fb;color:#6542bd;font-weight:700;flex:0 0 auto}
+.conversation-copy{min-width:0;flex:1}
+.conversation-copy strong,.conversation-copy small,.conversation-copy span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.conversation-copy small{font-size:11px;color:#8a7e94;margin:3px 0}
+.conversation-copy span{font-size:12px;color:#544a5e}
+.conversation-item>svg{color:#9b91a5;flex:0 0 auto}
+.conversation-detail{display:flex;flex-direction:column;min-height:620px}
+.conversation-head{display:flex;align-items:center;justify-content:space-between;padding:18px;border-bottom:1px solid #eee8f4}
+.conversation-head h2{margin:3px 0 2px}
+.conversation-head small{color:#8a7e94}
+.owner-chat{flex:1;overflow:auto;padding:20px;background:#fcfbfe;display:flex;flex-direction:column;gap:10px}
+.owner-message{max-width:76%;display:flex;flex-direction:column;gap:4px;padding:10px 13px;border-radius:14px;font-size:13px;line-height:1.45}
+.owner-message.customer{align-self:flex-start;background:#fff;border:1px solid #ebe5f0;color:#352c3e}
+.owner-message.business{align-self:flex-end;background:#eee8fb;color:#2f2340}
+.owner-message small{font-size:10px;opacity:.65}
+.owner-reply-box{display:flex;gap:10px;padding:12px;border-top:1px solid #eee8f4;background:#fff}
+.owner-reply-box textarea{min-height:48px;max-height:130px;resize:vertical;flex:1;border:1px solid #ddd4e8;border-radius:10px;padding:11px;font:inherit;outline:none}
+@media(max-width:900px){.inbox-grid{grid-template-columns:1fr}.conversation-list{max-height:360px}.conversation-scroll{max-height:280px}.conversation-detail{min-height:560px}.inbox-toolbar{align-items:stretch;flex-direction:column}.inbox-toolbar select{width:100%}}
