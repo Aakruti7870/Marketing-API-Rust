@@ -200,7 +200,7 @@ export default api;
 
 export const publicAgentApi = {
   chat: (publicKey, payload) => axios.post(
-    `${DEFAULT_BASE_URL.replace(/\\/api\\/v1$/, "")}/api/public/agents/${publicKey}/chat`,
+    `${DEFAULT_BASE_URL.replace("/api/v1", "")}/api/public/agents/${publicKey}/chat`,
     payload,
     { headers: { "Content-Type": "application/json" } }
   ),
