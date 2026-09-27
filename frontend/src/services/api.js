@@ -202,6 +202,7 @@ export const playgroundApi = {
   generate: (payload) => api.post("/playground/generate", payload),
   generateImage: (payload) => api.post("/playground/image", payload),
   assets: () => api.get("/playground/assets"),
+  groups: () => api.get("/playground/groups"),
   shareWhatsApp: (payload) => api.post("/playground/share-whatsapp", payload),
   importContacts: (channelId, file, groupName) => {
     const form = new FormData();
