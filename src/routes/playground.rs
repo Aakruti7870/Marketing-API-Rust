@@ -20,6 +20,7 @@ pub fn routes(state: AppState) -> Router {
         .route("/generate", post(generate))
         .route("/image", post(generate_image))
         .route("/assets", get(list_assets))
+        .route("/groups", get(list_groups))
         .route("/share-whatsapp", post(share_whatsapp))
         .route("/channels/:channel_id/import-contacts", post(import_contacts))
         .with_state(state)
@@ -90,6 +91,16 @@ async fn generate_image(
             dto.title.as_deref().unwrap_or("GOLD-e Playground image"),
         ).await?,
         "Playground image generated",
+    ))
+}
+
+async fn list_groups(
+    State(state): State<AppState>,
+    tenant: TenantContext,
+) -> Result<impl IntoResponse, AppError> {
+    Ok(json_success(
+        playground_service::list_groups(&state.pool, tenant.workspace_id).await?,
+        "Contact groups retrieved",
     ))
 }
 
