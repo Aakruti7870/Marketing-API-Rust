@@ -151,4 +151,35 @@ function Playground() {
     </div>
   </div>;
 }
+export function ChannelContactImporter({ channel }) {
+  const [file,setFile]=useState(null);
+  const [groupName,setGroupName]=useState("");
+  const [busy,setBusy]=useState(false);
+  const [notice,setNotice]=useState("");
+  const [error,setError]=useState("");
+
+  if(!channel) return null;
+  if(channel.channel!=="WHATSAPP") return <div className="inspector-note"><b>Contact import:</b> CSV-to-group import is currently enabled for WhatsApp channels. Instagram/Facebook contact imports can be added with their platform-specific permissions.</div>;
+
+  const upload=async()=>{
+    if(!file||busy)return;
+    setBusy(true);setNotice("");setError("");
+    try{
+      const data=unwrap(await playgroundApi.importContacts(channel.id,file,groupName));
+      setNotice("Imported "+(data?.imported||0)+" contacts into "+(data?.group_name||"the contact group")+".");
+      setFile(null);setGroupName("");
+    }catch(e){setError(e?.response?.data?.error||e?.message||"Contact import failed.");}
+    finally{setBusy(false);}
+  };
+
+  return <div className="channel-import-box">
+    <div><span className="panel-kicker">CONTACT GROUP IMPORT</span><strong>Import customers into a reusable group</strong><p>Upload a CSV with a <b>phone</b>, <b>mobile</b> or <b>whatsapp</b> column. Name/email/company are optional.</p></div>
+    <div className="form-grid"><label className="inspector-label">Group name<input value={groupName} onChange={e=>setGroupName(e.target.value)} placeholder="Festival Offer Customers"/></label><label className="inspector-label">Contact file<input type="file" accept=".csv,text/csv" onChange={e=>setFile(e.target.files?.[0]||null)}/></label></div>
+    {file&&<div className="import-file"><span>{file.name}</span><small>{Math.ceil(file.size/1024)} KB</small></div>}
+    {error&&<div className="alert error">{error}</div>}
+    {notice&&<div className="alert success">{notice}</div>}
+    <button className="ghost-btn full-btn" disabled={!file||busy} onClick={upload}><Upload size={14}/>{busy?"Importing…":"Import contacts & create group"}</button>
+  </div>;
+}
+
 export default Playground;
