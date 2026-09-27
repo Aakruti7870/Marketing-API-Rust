@@ -12,7 +12,6 @@ use axum::{
     Json, Router,
 };
 use serde::Deserialize;
-use serde_json::Value;
 use uuid::Uuid;
 
 pub fn routes(state: AppState) -> Router {
@@ -151,7 +150,7 @@ async fn public_asset(
     State(state): State<AppState>,
     Path(public_key): Path<String>,
 ) -> Result<Response<Body>, AppError> {
-    let row = sqlx::query_as::<_, (Option<Vec<u8>>, Option<String>, Option<String>)>(
+    let row = sqlx::query_as::<_, (Option<Vec<u8>>, Option<String>)>(
         "SELECT media_data, mime_type, public_key FROM playground_assets WHERE public_key=$1"
     )
     .bind(&public_key)
