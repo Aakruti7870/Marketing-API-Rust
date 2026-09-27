@@ -147,6 +147,9 @@ export const agentsApi = {
   createAgent: (payload) => api.post("/agents", payload),
   updateAgent: (id, payload) => api.put(`/agents/${id}`, payload),
   deleteAgent: (id) => api.delete(`/agents/${id}`),
+  channels: (id) => api.get(`/agents/${id}/channels`),
+  deployChannel: (id, payload) => api.post(`/agents/${id}/channels`, payload),
+  removeChannel: (channelId) => api.delete(`/agents/channels/${channelId}`),
   chat: (id, payload) => api.post(`/agents/${id}/chat`, payload),
   runs: (params = {}) => api.get("/agents/runs", { params }),
   run: (id) => api.get(`/agents/runs/${id}`),
@@ -193,3 +196,12 @@ export const automationsApi = {
 };
 
 export default api;
+
+
+export const publicAgentApi = {
+  chat: (publicKey, payload) => axios.post(
+    `${DEFAULT_BASE_URL.replace(/\\/api\\/v1$/, "")}/api/public/agents/${publicKey}/chat`,
+    payload,
+    { headers: { "Content-Type": "application/json" } }
+  ),
+};
