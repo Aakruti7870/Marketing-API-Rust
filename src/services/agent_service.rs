@@ -505,3 +505,92 @@ pub async fn reject_step(pool: &PgPool, workspace_id: Uuid, _user_id: Uuid, run_
     tx.commit().await?;
     get_run(pool, workspace_id, run_id).await
 }
+
+
+fn channel_key(config: &Config) -> Result<[u8; 32], AppError> {
+    let master = config.channel_encryption_key.as_deref().ok_or_else(|| {
+        AppError::BadRequest("CHANNEL_ENCRYPTION_KEY must be configured before connecting customer channels.".into())
+    })?;
+    let digest = Sha256::digest(master.as_bytes());
+    let mut key = [0u8; 32];
+    key.copy_from_slice(&digest);
+    Ok(key)
+}
+
+fn encrypt_channel_secret(config: &Config, secret: &str) -> Result<String, AppError> {
+    let key = channel_key(config)?;
+    let cipher = Aes256Gcm::new_from_slice(&key).map_err(|_| AppError::BadRequest("Invalid channel encryption key".into()))?;
+    let nonce_bytes = &Uuid::new_v4().as_bytes()[..12];
+    let nonce = Nonce::from_slice(nonce_bytes);
+    let ciphertext = cipher.encrypt(nonce, secret.as_bytes())
+        .map_err(|_| AppError::ExternalService("Unable to encrypt channel credential".into()))?;
+    let mut packed = nonce_bytes.to_vec();
+    packed.extend_from_slice(&ciphertext);
+    Ok(B64.encode(packed))
+}
+
+fn decrypt_channel_secret(config: &Config, value: &str) -> Result<String, AppError> {
+    let key = channel_key(config)?;
+    let packed = B64.decode(value).map_err(|_| AppError::ExternalService("Invalid stored channel credential".into()))?;
+    if packed.len() < 13 { return Err(AppError::ExternalService("Invalid stored channel credential".into())); }
+    let cipher = Aes256Gcm::new_from_slice(&key).map_err(|_| AppError::BadRequest("Invalid channel encryption key".into()))?;
+    let nonce = Nonce::from_slice(&packed[..12]);
+    let plaintext = cipher.decrypt(nonce, &packed[12..])
+        .map_err(|_| AppError::ExternalService("Unable to decrypt channel credential".into()))?;
+    String::from_utf8(plaintext).map_err(|_| AppError::ExternalService("Invalid channel credential encoding".into()))
+}
+
+pub async fn list_channel_connections(pool: &PgPool, workspace_id: Uuid, agent_id: Uuid) -> Result<Vec<ChannelConnectionResponse>, AppError> {
+    let rows = sqlx::query_as::<_, AiAgentChannelConnection>(
+        "SELECT * FROM ai_agent_channel_connections WHERE workspace_id=$1 AND agent_id=$2 ORDER BY created_at DESC"
+    ).bind(workspace_id).bind(agent_id).fetch_all(pool).await?;
+    Ok(rows.into_iter().map(|r| ChannelConnectionResponse {
+        id:r.id, agent_id:r.agent_id, channel:r.channel, provider:r.provider,
+        status:r.status, external_account_id:r.external_account_id,
+        external_sender_id:r.external_sender_id, display_name:r.display_name,
+        config:r.config, secret_configured:r.secret_ciphertext.is_some(),
+        created_at:r.created_at, updated_at:r.updated_at
+    }).collect())
+}
+
+pub async fn create_channel_connection(pool: &PgPool, config: &Config, workspace_id: Uuid, agent_id: Uuid, dto: CreateChannelConnectionDto) -> Result<ChannelConnectionResponse, AppError> {
+    let agent = get_agent(pool, workspace_id, agent_id).await?;
+    let channel = dto.channel.trim().to_uppercase();
+    if !matches!(channel.as_str(), "WHATSAPP" | "INSTAGRAM" | "FACEBOOK" | "WEBSITE") {
+        return Err(AppError::Validation("Supported channels: WHATSAPP, INSTAGRAM, FACEBOOK, WEBSITE".into()));
+    }
+    let provider = dto.provider.unwrap_or_else(|| if channel == "WEBSITE" { "GOLD-E".into() } else { "META".into() });
+    let secret_ciphertext = dto.secret.as_deref().filter(|s| !s.trim().is_empty()).map(|s| encrypt_channel_secret(config, s)).transpose()?;
+    let row=sqlx::query_as::<_,AiAgentChannelConnection>(
+        "INSERT INTO ai_agent_channel_connections
+        (id,workspace_id,agent_id,channel,provider,status,external_account_id,external_sender_id,display_name,config,secret_ciphertext)
+        VALUES ($1,$2,$3,$4,$5,'ACTIVE',$6,$7,$8,$9,$10) RETURNING *"
+    ).bind(Uuid::new_v4()).bind(workspace_id).bind(agent.id).bind(&channel).bind(provider)
+     .bind(dto.external_account_id).bind(dto.external_sender_id).bind(dto.display_name)
+     .bind(dto.config.unwrap_or_else(||json!({}))).bind(secret_ciphertext).fetch_one(pool).await?;
+    Ok(ChannelConnectionResponse {
+        id:row.id, agent_id:row.agent_id, channel:row.channel, provider:row.provider,
+        status:row.status, external_account_id:row.external_account_id,
+        external_sender_id:row.external_sender_id, display_name:row.display_name,
+        config:row.config, secret_configured:row.secret_ciphertext.is_some(),
+        created_at:row.created_at, updated_at:row.updated_at
+    })
+}
+
+pub async fn delete_channel_connection(pool:&PgPool, workspace_id:Uuid, id:Uuid)->Result<(),AppError>{
+    let result=sqlx::query("DELETE FROM ai_agent_channel_connections WHERE id=$1 AND workspace_id=$2")
+        .bind(id).bind(workspace_id).execute(pool).await?;
+    if result.rows_affected()==0 { return Err(AppError::NotFound("Channel connection not found".into())); }
+    Ok(())
+}
+
+pub async fn public_chat(pool:&PgPool, config:&Config, public_key:&str, dto:PublicAgentChatDto)->Result<PublicAgentChatResponse,AppError>{
+    let agent=sqlx::query_as::<_,AiAgent>("SELECT * FROM ai_agents WHERE public_key=$1 AND status='ACTIVE'")
+        .bind(public_key).fetch_optional(pool).await?
+        .ok_or_else(||AppError::NotFound("Published AI agent not found".into()))?;
+    let result=chat(pool,config,agent.workspace_id,agent.id,AiAgentChatDto{
+        conversation_id:dto.conversation_id, external_user_id:dto.visitor_id,
+        channel:Some("WEBSITE".into()), message:dto.message,
+    }).await?;
+    Ok(PublicAgentChatResponse{conversation_id:result.conversation_id,reply:result.reply,agent_name:agent.name,channel:"WEBSITE".into()})
+}
