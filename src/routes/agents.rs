@@ -1,7 +1,7 @@
 use crate::error::AppError;
 use crate::middleware::{require_workspace_roles, TenantContext};
 use crate::models::{
-    AiAgentChatDto, CreateAgentRunDto, CreateAiAgentDto, CreateChannelConnectionDto, PublicAgentChatDto, StepApprovalDto, StepRejectionDto,
+    AiAgentChatDto, CreateAgentRunDto, CreateAiAgentDto, CreateChannelConnectionDto, StepApprovalDto, StepRejectionDto,
     UpdateAiAgentDto,
 };
 use crate::services::agent_service;
@@ -11,7 +11,7 @@ use crate::utils::response::{json_paginated, json_success};
 use axum::{
     extract::{Path, Query, State},
     response::IntoResponse,
-    routing::{delete, get, post, put},
+    routing::{delete, get, post},
     Json, Router,
 };
 use serde::Deserialize;
