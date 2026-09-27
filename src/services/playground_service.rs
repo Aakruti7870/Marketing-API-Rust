@@ -8,7 +8,7 @@ use csv::ReaderBuilder;
 use reqwest::Client;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
-use sqlx::PgPool;
+use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
 fn decrypt_channel_secret(config: &Config, value: &str) -> Result<String, AppError> {
