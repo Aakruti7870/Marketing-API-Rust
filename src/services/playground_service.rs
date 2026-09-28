@@ -334,7 +334,6 @@ pub async fn share_whatsapp(
     let content:Option<String>=asset.get("content");
     let media_data:Option<Vec<u8>>=asset.get("media_data");
     let public_key:Option<String>=asset.get("public_key");
-    let metadata:Value=asset.get("metadata");
 
     if kind=="SMART_WHATSAPP" && channel.agent_id != Uuid::nil() {
         sqlx::query("UPDATE playground_button_actions SET agent_id=$1,updated_at=NOW() WHERE asset_id=$2 AND workspace_id=$3")
@@ -367,14 +366,20 @@ pub async fn share_whatsapp(
                 "body":{"text":clamp_text(&body_text,1024)},
                 "action":{"buttons":buttons}
             });
-            if media_data.is_some()&&public_key.is_some(){
-                let url=format!("{}/api/public/playground/assets/{}",config.public_base_url.trim_end_matches('/'),public_key.as_ref().unwrap());
-                interactive["header"]=json!({"type":"image","image":{"link":url}});
+            if media_data.is_some() {
+                if let Some(key)=public_key.as_deref() {
+                    let url=format!("{}/api/public/playground/assets/{}",config.public_base_url.trim_end_matches('/'),key);
+                    interactive["header"]=json!({"type":"image","image":{"link":url}});
+                }
             }
             json!({"messaging_product":"whatsapp","to":phone,"type":"interactive","interactive":interactive})
-        }else if media_data.is_some()&&public_key.is_some(){
-            let url=format!("{}/api/public/playground/assets/{}",config.public_base_url.trim_end_matches('/'),public_key.as_ref().unwrap());
-            json!({"messaging_product":"whatsapp","to":phone,"type":"image","image":{"link":url,"caption":clamp_text(&body_text,1024)}})
+        }else if media_data.is_some() {
+            if let Some(key)=public_key.as_deref() {
+                let url=format!("{}/api/public/playground/assets/{}",config.public_base_url.trim_end_matches('/'),key);
+                json!({"messaging_product":"whatsapp","to":phone,"type":"image","image":{"link":url,"caption":clamp_text(&body_text,1024)}})
+            } else {
+                json!({"messaging_product":"whatsapp","to":phone,"type":"text","text":{"preview_url":false,"body":clamp_text(&body_text,4096)}})
+            }
         }else{
             json!({"messaging_product":"whatsapp","to":phone,"type":"text","text":{"preview_url":false,"body":clamp_text(&body_text,4096)}})
         };
