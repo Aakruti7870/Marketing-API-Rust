@@ -15,6 +15,33 @@ const TABS = [
 const IMAGE_TYPES = [["BANNER","Business Banner"],["OFFER_IMAGE","Offer Picture"],["LOGO","Logo"]];
 const TEXT_TYPES = [["EMAIL_TEMPLATE","Email Template"],["WHATSAPP_TEMPLATE","WhatsApp Message Template"],["SMART_WHATSAPP","Smart WhatsApp Message"]];
 
+
+function SmartButtonEditor({asset,actions,automations,onSave}){
+  const buttons=asset?.metadata?.buttons||[];
+  if(!buttons.length)return null;
+  return <div className="smart-button-editor">
+    <span className="smart-editor-title">REAL WHATSAPP QUICK REPLIES</span>
+    {buttons.map(button=>{
+      const current=actions.find(a=>a.button_id===button.id);
+      const type=current?.action_type||"BOT_REPLY";
+      const automationId=current?.action_payload?.automation_id||"";
+      return <div className="smart-action-row" key={button.id}>
+        <button className="smart-preview-button">{button.title}</button>
+        <select value={type} onChange={e=>onSave({...button,assetId:asset.id},e.target.value,automationId)}>
+          <option value="BOT_REPLY">Feed to AI Bot</option>
+          <option value="AUTOMATION">Trigger Automation</option>
+        </select>
+        {type==="AUTOMATION"&&<select value={automationId} onChange={e=>onSave({...button,assetId:asset.id},type,e.target.value)}>
+          <option value="">Select automation</option>
+          {automations.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}
+        </select>}
+        {type==="BOT_REPLY"&&<small>Payload: {button.payload}</small>}
+      </div>;
+    })}
+    <small className="smart-action-help">Choose what happens when a customer taps each WhatsApp button. The assignment is stored and used by the webhook.</small>
+  </div>;
+}
+
 function Playground() {
   const [tab,setTab]=useState("chat");
   const [mode,setMode]=useState("SMART_WHATSAPP");
@@ -165,7 +192,7 @@ function Playground() {
           <div className="playground-asset-grid">{imageAssets.map(a=><button key={a.id} className={selectedAsset===a.id?"selected":""} onClick={()=>setSelectedAsset(a.id)}><img src={"https://api.goldetech.com/api/public/playground/assets/"+a.public_key} alt={a.title}/><span>{a.kind.replaceAll("_"," ")}</span><strong>{a.title}</strong></button>)}</div>
         </section>}
 
-        {tab==="templates"&&<section className="playground-section"><div className="template-workbench panel"><div className="playground-section-head"><div><span className="panel-kicker">MESSAGE FACTORY</span><h2>Email + WhatsApp templates</h2><p>Generate reusable copy. Smart WhatsApp outputs can include quick replies for bot and automation paths.</p></div></div><div className="asset-type-grid">{TEXT_TYPES.map(([k,l])=><button key={k} className={mode===k?"selected":""} onClick={()=>setMode(k)}><FileText size={18}/><strong>{l}</strong><small>Text generation</small></button>)}</div><textarea className="playground-large-input" value={prompt} onChange={e=>setPrompt(e.target.value)} placeholder="Describe the message, audience, offer, tone and desired action…"/><button className="command-btn" disabled={busy||!prompt.trim()} onClick={()=>runText(mode)}><Sparkles size={16}/>{busy?"Generating…":"Generate template"}</button>{chat.filter(m=>m.role==="assistant").slice(-1).map((m,i)=><div className="template-output" key={i}><div className="template-output-head"><strong>Generated {mode.replaceAll("_"," ")}</strong><button className="ghost-btn compact" onClick={()=>copyText(m.content)}><Copy size={13}/>Copy</button></div><pre>{m.content}</pre>{mode==="SMART_WHATSAPP"&&<div className="smart-button-preview"><span>QUICK REPLIES</span><button>I'm interested</button><button>Get price</button><button>Talk to team</button></div>}</div>)}</div></section>}
+        {tab==="templates"&&<section className="playground-section"><div className="template-workbench panel"><div className="playground-section-head"><div><span className="panel-kicker">MESSAGE FACTORY</span><h2>Email + WhatsApp templates</h2><p>Generate reusable copy. Smart WhatsApp outputs can include quick replies for bot and automation paths.</p></div></div><div className="asset-type-grid">{TEXT_TYPES.map(([k,l])=><button key={k} className={mode===k?"selected":""} onClick={()=>setMode(k)}><FileText size={18}/><strong>{l}</strong><small>Text generation</small></button>)}</div><textarea className="playground-large-input" value={prompt} onChange={e=>setPrompt(e.target.value)} placeholder="Describe the message, audience, offer, tone and desired action…"/><button className="command-btn" disabled={busy||!prompt.trim()} onClick={()=>runText(mode)}><Sparkles size={16}/>{busy?"Generating…":"Generate template"}</button>{chat.filter(m=>m.role==="assistant").slice(-1).map((m,i)=><div className="template-output" key={i}><div className="template-output-head"><strong>Generated {mode.replaceAll("_"," ")}</strong><button className="ghost-btn compact" onClick={()=>copyText(m.content)}><Copy size={13}/>Copy</button></div><pre>{m.content}</pre>{mode==="SMART_WHATSAPP"&&<SmartButtonEditor asset={m.asset} actions={smartActions} automations={automations} onSave={saveAction} />}</div>)}</div></section>}
 
         {tab==="seo"&&<section className="playground-section"><div className="seo-workbench panel"><div className="playground-section-head"><div><span className="panel-kicker">BUILT-IN SEO</span><h2>SEO Growth Assistant</h2><p>Generate a structured SEO package for pages, products and business content. SEO improves technical/content readiness; it does not guarantee rankings.</p></div><Search size={18}/></div><textarea className="playground-large-input" value={prompt} onChange={e=>setPrompt(e.target.value)} placeholder="Describe the page/business: service, city, audience, unique value, products…"/><button className="command-btn" disabled={busy||!prompt.trim()} onClick={()=>runText("SEO")}><Search size={15}/>{busy?"Generating…":"Generate SEO package"}</button>{chat.filter(m=>m.role==="assistant").slice(-1).map((m,i)=><div className="seo-output" key={i}><pre>{m.content}</pre></div>)}</div><div className="seo-checklist panel"><strong>SEO foundation included</strong><ul><li>Title + meta description</li><li>Keyword and intent mapping</li><li>H1/H2 content structure</li><li>FAQ opportunities</li><li>Open Graph copy</li><li>JSON-LD recommendation</li><li>Internal-link ideas</li></ul></div></section>}
       </main>
