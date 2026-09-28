@@ -388,3 +388,107 @@ pub async fn share_whatsapp(
     }
     Ok(json!({"sent":sent,"failed":failed,"errors":errors,"group_id":group_id,"asset_id":asset_id,"sender_id":sender_id,"interactive":!buttons.is_empty()}))
 }
+
+pub async fn list_button_actions(pool:&PgPool, workspace_id:Uuid, asset_id:Uuid)->Result<Vec<Value>,AppError>{
+    let rows=sqlx::query(
+        "SELECT button_id,asset_id,agent_id,title,action_type,action_payload
+         FROM playground_button_actions WHERE workspace_id=$1 AND asset_id=$2 ORDER BY created_at ASC"
+    ).bind(workspace_id).bind(asset_id).fetch_all(pool).await?;
+    Ok(rows.into_iter().map(|r|json!({
+        "button_id":r.get::<String,_>("button_id"),
+        "asset_id":r.get::<Uuid,_>("asset_id"),
+        "agent_id":r.get::<Option<Uuid>,_>("agent_id"),
+        "title":r.get::<String,_>("title"),
+        "action_type":r.get::<String,_>("action_type"),
+        "action_payload":r.get::<Value,_>("action_payload")
+    })).collect())
+}
+
+pub async fn save_button_action(pool:&PgPool, workspace_id:Uuid, dto:crate::models::PlaygroundButtonActionDto)->Result<Value,AppError>{
+    let action_type=dto.action_type.trim().to_uppercase();
+    if !["BOT_REPLY","AUTOMATION"].contains(&action_type.as_str()){
+        return Err(AppError::Validation("Supported button actions are BOT_REPLY and AUTOMATION.".into()));
+    }
+    if dto.button_id.trim().is_empty() || dto.button_id.len()>120 {
+        return Err(AppError::Validation("Invalid button ID.".into()));
+    }
+    let _asset:Uuid=sqlx::query_scalar("SELECT id FROM playground_assets WHERE id=$1 AND workspace_id=$2")
+        .bind(dto.asset_id).bind(workspace_id).fetch_optional(pool).await?
+        .ok_or_else(||AppError::NotFound("Playground asset not found.".into()))?;
+    if action_type=="AUTOMATION" {
+        let aid=dto.action_payload.get("automation_id").and_then(Value::as_str)
+            .ok_or_else(||AppError::Validation("Automation action requires automation_id.".into()))?;
+        let automation_id=Uuid::parse_str(aid).map_err(|_|AppError::Validation("Invalid automation_id.".into()))?;
+        let exists=sqlx::query("SELECT 1 FROM automations WHERE id=$1 AND workspace_id=$2")
+            .bind(automation_id).bind(workspace_id).fetch_optional(pool).await?;
+        if exists.is_none(){return Err(AppError::NotFound("Automation not found in this workspace.".into()));}
+    }
+    let row=sqlx::query(
+        "INSERT INTO playground_button_actions(button_id,workspace_id,asset_id,agent_id,title,action_type,action_payload)
+         VALUES($1,$2,$3,$4,$5,$6,$7)
+         ON CONFLICT(button_id) DO UPDATE SET agent_id=EXCLUDED.agent_id,title=EXCLUDED.title,
+         action_type=EXCLUDED.action_type,action_payload=EXCLUDED.action_payload,updated_at=NOW()
+         RETURNING button_id,asset_id,agent_id,title,action_type,action_payload"
+    ).bind(dto.button_id.trim()).bind(workspace_id).bind(dto.asset_id).bind(dto.agent_id)
+     .bind(dto.title.trim()).bind(&action_type).bind(dto.action_payload).fetch_one(pool).await?;
+    Ok(json!({
+        "button_id":row.get::<String,_>("button_id"),
+        "asset_id":row.get::<Uuid,_>("asset_id"),
+        "agent_id":row.get::<Option<Uuid>,_>("agent_id"),
+        "title":row.get::<String,_>("title"),
+        "action_type":row.get::<String,_>("action_type"),
+        "action_payload":row.get::<Value,_>("action_payload")
+    }))
+}
+
+fn clamp_text(value:&str,max:usize)->String{value.chars().take(max).collect()}
+
+pub async fn handle_button_action(pool:&PgPool, config:&Config, button_id:&str, sender_id:&str)->Result<bool,AppError>{
+    let action=sqlx::query(
+        "SELECT workspace_id,asset_id,agent_id,action_type,action_payload
+         FROM playground_button_actions WHERE button_id=$1"
+    ).bind(button_id).fetch_optional(pool).await?;
+    let Some(action)=action else { return Ok(false); };
+
+    let workspace_id:Uuid=action.get("workspace_id");
+    let agent_id:Option<Uuid>=action.get("agent_id");
+    let action_type:String=action.get("action_type");
+    let payload:Value=action.get("action_payload");
+    let agent_id=agent_id.ok_or_else(||AppError::BadRequest("This Smart WhatsApp button is not assigned to an AI Agent yet.".into()))?;
+
+    match action_type.as_str() {
+        "BOT_REPLY"=>{
+            let input=payload.get("message").and_then(Value::as_str).unwrap_or(button_id);
+            let result=crate::services::agent_service::chat(pool,config,workspace_id,agent_id,crate::models::AiAgentChatDto{
+                conversation_id:None,external_user_id:Some(sender_id.to_string()),channel:Some("WHATSAPP".into()),message:input.to_string()
+            }).await?;
+            let channel=sqlx::query_as::<_,AiAgentChannelConnection>(
+                "SELECT * FROM ai_agent_channel_connections
+                 WHERE workspace_id=$1 AND agent_id=$2 AND channel='WHATSAPP' AND status='ACTIVE'
+                 ORDER BY created_at DESC LIMIT 1"
+            ).bind(workspace_id).bind(agent_id).fetch_optional(pool).await?
+             .ok_or_else(||AppError::NotFound("No active WhatsApp channel is available for this Smart WhatsApp button.".into()))?;
+            let secret=channel.secret_ciphertext.as_deref().ok_or_else(||AppError::BadRequest("WhatsApp channel access token is not configured.".into()))?;
+            let token=decrypt_channel_secret(config,secret)?;
+            let phone_number_id=channel.external_account_id.as_deref().ok_or_else(||AppError::BadRequest("WhatsApp phone number ID is not configured.".into()))?;
+            let body=json!({"messaging_product":"whatsapp","to":sender_id,"type":"text","text":{"preview_url":false,"body":clamp_text(&result.reply,4096)}});
+            let resp=Client::new().post(format!("https://graph.facebook.com/{}/messages",phone_number_id))
+                .bearer_auth(token).json(&body).send().await
+                .map_err(|e|AppError::ExternalService(format!("Smart button bot reply failed: {}",e)))?;
+            if !resp.status().is_success(){return Err(AppError::ExternalService(format!("Smart button bot reply rejected: {}",resp.text().await.unwrap_or_default())));}
+        },
+        "AUTOMATION"=>{
+            let automation_id=payload.get("automation_id").and_then(Value::as_str)
+                .ok_or_else(||AppError::BadRequest("Automation button has no automation_id.".into()))?;
+            let automation_id=Uuid::parse_str(automation_id).map_err(|_|AppError::Validation("Invalid automation_id.".into()))?;
+            let state=crate::state::AppState{pool:pool.clone(),config:std::sync::Arc::new(config.clone()),http_client:Client::new()};
+            let run_id=crate::services::automation_service::trigger(
+                &state,automation_id,workspace_id,"WEBHOOK",
+                json!({"source":"WHATSAPP_BUTTON","button_id":button_id,"sender_id":sender_id,"payload":payload})
+            ).await?;
+            tracing::info!("Smart WhatsApp button triggered automation {} run {}",automation_id,run_id);
+        },
+        _=>return Err(AppError::Validation("Unsupported Smart WhatsApp action.".into()))
+    }
+    Ok(true)
+}
