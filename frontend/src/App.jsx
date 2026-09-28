@@ -149,6 +149,10 @@ function AgentStudio() {
   const [channelForm,setChannelForm]=useState({channel:"WEBSITE",external_account_id:"",external_sender_id:"",secret:"",display_name:""});
   const [channelBusy,setChannelBusy]=useState(false);
   const [channelNotice,setChannelNotice]=useState("");
+  const [websiteConnectAgent,setWebsiteConnectAgent]=useState(null);
+  const [websiteForm,setWebsiteForm]=useState({website_url:"",cpanel_host:"",cpanel_username:"",cpanel_token:""});
+  const [websiteBusy,setWebsiteBusy]=useState(false);
+  const [websiteNotice,setWebsiteNotice]=useState("");
 
   const load=async()=>{
     setLoading(true);setError("");
@@ -206,6 +210,26 @@ CUSTOMER SCRIPT:
     finally{setChannelBusy(false);}
   };
 
+
+  const openWebsiteConnect=(agent)=>{
+    setWebsiteConnectAgent(agent);
+    setWebsiteNotice("");
+    setWebsiteForm({website_url:"https://",cpanel_host:"",cpanel_username:"",cpanel_token:""});
+  };
+
+  const connectWebsite=async()=>{
+    if(!websiteConnectAgent)return;
+    setWebsiteBusy(true);setWebsiteNotice("");
+    try{
+      const data=unwrap(await agentsApi.connectWebsite(websiteConnectAgent.id,websiteForm));
+      setWebsiteNotice(data?.already_installed ? "Website was already connected." : "Website connected. GOLD-e widget is live.");
+      setWebsiteForm({...websiteForm,cpanel_token:""});
+      await load();
+    }catch(err){
+      setWebsiteNotice(err?.response?.data?.error||err?.message||"Website connection failed.");
+    }finally{setWebsiteBusy(false);}
+  };
+
   const sendMessage=async()=>{
     if(!chatAgent||!message.trim()||chatting)return;
     const text=message.trim();setMessage("");setMessages(prev=>[...prev,{role:"user",content:text}]);setChatting(true);
@@ -225,7 +249,7 @@ CUSTOMER SCRIPT:
 
     <section className="agent-section"><div className="section-title"><div><div className="panel-kicker">DEPLOYED AGENTS</div><h2>Your customer-service workforce</h2></div></div>
       {agents.length===0?<div className="panel empty-state compact"><div className="empty-icon"><Bot/></div><h3>No AI agents yet.</h3><p>Create a business assistant, add your real business details, then deploy it to customer channels.</p></div>:
-      <div className="agent-list">{agents.map(agent=><div className="agent-card panel" key={agent.id}><div className="agent-card-icon"><Bot size={20}/></div><div className="agent-card-main"><div className="agent-card-title"><strong>{agent.name}</strong><span className={agent.status==="ACTIVE"?"status-pill":"status-pill draft"}>{agent.status}</span></div><small>{agent.role} · {agent.industry}</small><p>{agent.description}</p><div className="agent-capabilities">{(Array.isArray(agent.capabilities)?agent.capabilities:[]).slice(0,5).map(x=><span key={x}>{String(x).replaceAll("_"," ")}</span>)}</div></div><div className="agent-card-actions">{agent.status!=="ACTIVE"&&<button className="primary-btn compact" onClick={()=>deploy(agent)}><Rocket size={14}/>Deploy</button>}<button className="command-btn compact" disabled={agent.status!=="ACTIVE"} onClick={()=>openDeploy(agent)}><Globe2 size={14}/>Deploy channels</button><button className="ghost-btn compact" disabled={agent.status!=="ACTIVE"} onClick={()=>{setChatAgent(agent);setMessages([])}}><MessageSquare size={14}/>Test</button><button className="ghost-btn compact danger" onClick={()=>remove(agent)}><X size={14}/></button></div></div>)}</div>}
+      <div className="agent-list">{agents.map(agent=><div className="agent-card panel" key={agent.id}><div className="agent-card-icon"><Bot size={20}/></div><div className="agent-card-main"><div className="agent-card-title"><strong>{agent.name}</strong><span className={agent.status==="ACTIVE"?"status-pill":"status-pill draft"}>{agent.status}</span></div><small>{agent.role} · {agent.industry}</small><p>{agent.description}</p><div className="agent-capabilities">{(Array.isArray(agent.capabilities)?agent.capabilities:[]).slice(0,5).map(x=><span key={x}>{String(x).replaceAll("_"," ")}</span>)}</div></div><div className="agent-card-actions">{agent.status!=="ACTIVE"&&<button className="primary-btn compact" onClick={()=>deploy(agent)}><Rocket size={14}/>Deploy</button>}<button className="command-btn compact" disabled={agent.status!=="ACTIVE"} onClick={()=>openDeploy(agent)}><Globe2 size={14}/>Deploy channels</button><button className="primary-btn compact" disabled={agent.status!=="ACTIVE"} onClick={()=>openWebsiteConnect(agent)}><Globe2 size={14}/>Connect website</button><button className="ghost-btn compact" disabled={agent.status!=="ACTIVE"} onClick={()=>{setChatAgent(agent);setMessages([])}}><MessageSquare size={14}/>Test</button><button className="ghost-btn compact danger" onClick={()=>remove(agent)}><X size={14}/></button></div></div>)}</div>}
     </section>
 
     {createOpen&&<div className="agent-modal-backdrop" onClick={closeCreate}><div className="agent-modal wide" onClick={e=>e.stopPropagation()}><div className="run-modal-head"><div><div className="panel-kicker">BUSINESS SETUP</div><h2>{selectedTemplate?.name||"Choose a template"}</h2></div><button className="icon-circle" onClick={closeCreate}><X size={17}/></button></div>
@@ -246,6 +270,21 @@ CUSTOMER SCRIPT:
       {channelNotice&&<div className={"alert "+(channelNotice.includes("active")?"success":"error")}>{channelNotice}</div>}
       <button className="primary-btn full-btn" disabled={channelBusy||(channelForm.channel!=="WEBSITE"&&!channelForm.secret)} onClick={deployChannel}>{channelBusy?"Deploying…":`Activate ${channelForm.channel}`}<Rocket size={15}/></button>
       <div className="deployment-list"><div className="panel-kicker">ACTIVE CONNECTIONS</div>{channels.length?channels.map(c=><div className="deployment-row" key={c.id}><span className="status-pill">{c.channel}</span><span>{c.display_name||c.external_account_id||"Connected"}</span><small>{c.secret_configured?"Credential secured":"Public deployment"}</small></div>):<span className="muted">No channels connected yet.</span>}</div><ChannelContactImporter channel={channels.find(c=>c.channel===channelForm.channel&&c.status==="ACTIVE")}/>
+    </div></div>}
+
+
+    {websiteConnectAgent&&<div className="agent-modal-backdrop" onClick={()=>setWebsiteConnectAgent(null)}><div className="agent-modal wide" onClick={e=>e.stopPropagation()}>
+      <div className="run-modal-head"><div><div className="panel-kicker">ONE-CLICK WEBSITE SETUP</div><h2>Connect {websiteConnectAgent.name}</h2><span>GOLD-e will install the widget in your cPanel website automatically.</span></div><button className="icon-circle" onClick={()=>setWebsiteConnectAgent(null)}><X size={17}/></button></div>
+      <div className="inspector-note"><b>What happens:</b> GOLD-e reads your <code>public_html/index.html</code>, creates a backup, inserts the widget, saves it, and verifies the live website. Your cPanel token is used for this operation and is not stored.</div>
+      <label className="inspector-label">Website URL<input value={websiteForm.website_url} onChange={e=>setWebsiteForm({...websiteForm,website_url:e.target.value})} placeholder="https://example.com"/></label>
+      <div className="form-grid">
+        <label className="inspector-label">cPanel host<input value={websiteForm.cpanel_host} onChange={e=>setWebsiteForm({...websiteForm,cpanel_host:e.target.value})} placeholder="cpanel.example.com"/></label>
+        <label className="inspector-label">cPanel username<input value={websiteForm.cpanel_username} onChange={e=>setWebsiteForm({...websiteForm,cpanel_username:e.target.value})} placeholder="cpanel username"/></label>
+      </div>
+      <label className="inspector-label">cPanel API token<input type="password" value={websiteForm.cpanel_token} onChange={e=>setWebsiteForm({...websiteForm,cpanel_token:e.target.value})} placeholder="Paste cPanel API token"/></label>
+      {websiteNotice&&<div className={"alert "+(websiteNotice.includes("live")||websiteNotice.includes("already")?"success":"error")}>{websiteNotice}</div>}
+      <button className="primary-btn full-btn" disabled={websiteBusy||!websiteForm.website_url||!websiteForm.cpanel_host||!websiteForm.cpanel_username||!websiteForm.cpanel_token} onClick={connectWebsite}>{websiteBusy?"Connecting and installing…":"Connect & install automatically"}<Rocket size={15}/></button>
+      <div className="inspector-note">Need a cPanel token? In cPanel, open <b>Security → Manage API Tokens</b> and create a token for GOLD-e.</div>
     </div></div>}
 
     {chatAgent&&<div className="agent-modal-backdrop" onClick={()=>setChatAgent(null)}><div className="agent-chat-modal" onClick={e=>e.stopPropagation()}><div className="run-modal-head"><div><div className="panel-kicker">LIVE CUSTOMER TEST</div><h2>{chatAgent.name}</h2><span>{chatAgent.role}</span></div><button className="icon-circle" onClick={()=>setChatAgent(null)}><X size={17}/></button></div><div className="agent-chat-messages">{messages.length===0?<div className="agent-chat-empty"><Bot size={28}/><strong>Test the customer experience</strong><span>Try: “I need an appointment tomorrow morning.”</span></div>:messages.map((m,i)=><div key={i} className={"chat-bubble "+m.role}><span>{m.content}</span></div>)}{chatting&&<div className="chat-bubble assistant"><span>Thinking…</span></div>}</div><div className="agent-chat-input"><input value={message} onChange={e=>setMessage(e.target.value)} onKeyDown={e=>e.key==="Enter"&&sendMessage()} placeholder="Talk to your AI agent…"/><button className="primary-btn compact" onClick={sendMessage} disabled={chatting||!message.trim()}><ArrowRight size={16}/></button></div></div></div>}
