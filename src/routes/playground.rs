@@ -20,6 +20,8 @@ pub fn routes(state: AppState) -> Router {
         .route("/image", post(generate_image))
         .route("/assets", get(list_assets))
         .route("/groups", get(list_groups))
+        .route("/button-actions/:asset_id", get(list_button_actions))
+        .route("/button-actions", post(save_button_action))
         .route("/share-whatsapp", post(share_whatsapp))
         .route("/channels/:channel_id/import-contacts", post(import_contacts))
         .with_state(state)
@@ -90,6 +92,30 @@ async fn generate_image(
             dto.title.as_deref().unwrap_or("GOLD-e Playground image"),
         ).await?,
         "Playground image generated",
+    ))
+}
+
+
+async fn list_button_actions(
+    State(state): State<AppState>,
+    tenant: TenantContext,
+    Path(asset_id): Path<Uuid>,
+) -> Result<impl IntoResponse, AppError> {
+    Ok(json_success(
+        playground_service::list_button_actions(&state.pool, tenant.workspace_id, asset_id).await?,
+        "Playground button actions retrieved",
+    ))
+}
+
+async fn save_button_action(
+    State(state): State<AppState>,
+    tenant: TenantContext,
+    Json(dto): Json<crate::models::PlaygroundButtonActionDto>,
+) -> Result<impl IntoResponse, AppError> {
+    require_workspace_roles(&tenant.workspace_role, &["OWNER", "ADMIN"])?;
+    Ok(json_success(
+        playground_service::save_button_action(&state.pool, tenant.workspace_id, dto).await?,
+        "Playground button action saved",
     ))
 }
 
