@@ -18,6 +18,7 @@ use serde_json::json;
 
 pub fn create_api_router(state: AppState) -> Router {
     Router::new()
+        .layer(axum::Extension(state.clone()))
         .route("/", get(custom_domains::landing))
         .route("/health", get(health_check))
         .nest("/api/v1/auth", auth::routes(state.clone()))

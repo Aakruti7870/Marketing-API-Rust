@@ -2,7 +2,7 @@ use crate::error::AppError;
 use crate::middleware::{require_workspace_roles, TenantContext};
 use crate::state::AppState;
 use axum::{
-    extract::{Host, Path, State},
+    extract::{Extension, Host, Path, State},
     http::{header, StatusCode},
     response::{IntoResponse, Response},
     routing::{get, post},
@@ -20,7 +20,7 @@ struct ConnectDomainDto {
     hostname: String,
 }
 
-#[derive(Debug, sqlx::FromRow)]
+#[derive(Debug, serde::Serialize, sqlx::FromRow)]
 struct CustomDomain {
     id: Uuid,
     workspace_id: Uuid,
@@ -226,7 +226,7 @@ fn domain_payload(domain: CustomDomain, agent_name: &str) -> serde_json::Value {
     })
 }
 
-pub async fn landing(State(state): State<AppState>, Host(host): Host) -> Response {
+pub async fn landing(Extension(state): Extension<AppState>, Host(host): Host) -> Response {
     let hostname = host.split(':').next().unwrap_or(host.as_str()).to_ascii_lowercase();
 
     let domain = match sqlx::query_as::<_, CustomDomain>(
