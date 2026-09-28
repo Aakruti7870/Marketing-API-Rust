@@ -722,6 +722,178 @@ pub async fn owner_reply(
     Ok(saved)
 }
 
+pub async fn connect_website_via_cpanel(
+    pool: &PgPool,
+    workspace_id: Uuid,
+    agent_id: Uuid,
+    website_url: &str,
+    cpanel_host: &str,
+    cpanel_username: &str,
+    cpanel_token: &str,
+) -> Result<Value, AppError> {
+    let agent = get_agent(pool, workspace_id, agent_id).await?;
+    if agent.status != "ACTIVE" {
+        return Err(AppError::BadRequest("Deploy the AI agent before connecting a website.".into()));
+    }
+    let public_key = agent.public_key.clone()
+        .ok_or_else(|| AppError::BadRequest("This AI agent has no public widget key.".into()))?;
+
+    let website_url = website_url.trim().trim_end_matches('/');
+    let parsed = reqwest::Url::parse(website_url)
+        .map_err(|_| AppError::Validation("Enter a valid website URL.".into()))?;
+    if parsed.scheme() != "https" && parsed.scheme() != "http" {
+        return Err(AppError::Validation("Website URL must use http or https.".into()));
+    }
+
+    let host = cpanel_host.trim()
+        .trim_end_matches('/')
+        .trim_start_matches("https://")
+        .trim_start_matches("http://")
+        .trim_end_matches('/');
+    if host.is_empty() || cpanel_username.trim().is_empty() || cpanel_token.trim().is_empty() {
+        return Err(AppError::Validation("cPanel host, username and API token are required.".into()));
+    }
+
+    let base = format!("https://{}:2083/execute", host);
+    let auth = format!("cpanel {}:{}", cpanel_username.trim(), cpanel_token.trim());
+    let client = Client::new();
+
+    let dir = format!("/home/{}/public_html", cpanel_username.trim());
+    let file = "index.html";
+
+    // Read the current file first. We never overwrite a file we cannot read.
+    let read = client
+        .get(format!("{}/Fileman/get_file_content", base))
+        .header("Authorization", &auth)
+        .query(&[("dir", dir.as_str()), ("file", file)])
+        .send()
+        .await
+        .map_err(|e| AppError::ExternalService(format!("cPanel connection failed: {}", e)))?;
+
+    let read_status = read.status();
+    let read_body: Value = read.json().await.unwrap_or_else(|_| json!({}));
+    if !read_status.is_success() {
+        return Err(AppError::ExternalService(format!("cPanel returned HTTP {}", read_status)));
+    }
+    if read_body.get("status").and_then(Value::as_i64) == Some(0) {
+        let reason = read_body.get("errors")
+            .and_then(Value::as_array).and_then(|a| a.first())
+            .and_then(Value::as_str).unwrap_or("cPanel could not read index.html");
+        return Err(AppError::ExternalService(format!("cPanel: {}", reason)));
+    }
+
+    let current = read_body.get("data")
+        .and_then(|d| d.get("content"))
+        .and_then(Value::as_str)
+        .or_else(|| read_body.get("data").and_then(Value::as_str))
+        .ok_or_else(|| AppError::ExternalService("cPanel did not return index.html content.".into()))?;
+
+    let script = format!(
+        r#"<script src="https://api.goldetech.com/api/public/agents/{}/widget.js" defer></script>"#,
+        public_key
+    );
+
+    if current.contains(&format!("api.goldetech.com/api/public/agents/{}/widget.js", public_key)) {
+        let _ = sqlx::query(
+            "INSERT INTO ai_agent_channel_connections
+             (workspace_id,agent_id,channel,provider,status,display_name,config)
+             VALUES ($1,$2,'WEBSITE','GOLD-E','ACTIVE',$3,$4)
+             ON CONFLICT DO NOTHING"
+        )
+        .bind(workspace_id)
+        .bind(agent_id)
+        .bind(website_url)
+        .bind(json!({"installation":"cpanel","website_url":website_url,"file":"index.html"}))
+        .execute(pool).await;
+        return Ok(json!({
+            "installed": true,
+            "already_installed": true,
+            "website_url": website_url,
+            "public_key": public_key,
+            "file": "index.html"
+        }));
+    }
+
+    let lower = current.to_ascii_lowercase();
+    let insertion = if let Some(pos) = lower.rfind("</head>") {
+        let mut out = String::with_capacity(current.len() + script.len() + 1);
+        out.push_str(&current[..pos]);
+        out.push_str(&script);
+        out.push_str(&current[pos..]);
+        out
+    } else {
+        return Err(AppError::BadRequest("index.html does not contain a </head> tag. Use the manual installer for this site.".into()));
+    };
+
+    // Back up the original file before writing the modified index.
+    let backup_name = "index.html.golde-backup";
+    let backup = client
+        .post(format!("{}/Fileman/save_file_content", base))
+        .header("Authorization", &auth)
+        .form(&[
+            ("dir", dir.as_str()),
+            ("file", backup_name),
+            ("content", current),
+        ])
+        .send()
+        .await
+        .map_err(|e| AppError::ExternalService(format!("cPanel backup failed: {}", e)))?;
+    let backup_body: Value = backup.json().await.unwrap_or_else(|_| json!({}));
+    if backup_body.get("status").and_then(Value::as_i64) == Some(0) {
+        return Err(AppError::ExternalService("cPanel could not create the website backup.".into()));
+    }
+
+    let save = client
+        .post(format!("{}/Fileman/save_file_content", base))
+        .header("Authorization", &auth)
+        .form(&[
+            ("dir", dir.as_str()),
+            ("file", file),
+            ("content", insertion.as_str()),
+        ])
+        .send()
+        .await
+        .map_err(|e| AppError::ExternalService(format!("cPanel write failed: {}", e)))?;
+    let save_status = save.status();
+    let save_body: Value = save.json().await.unwrap_or_else(|_| json!({}));
+    if !save_status.is_success() || save_body.get("status").and_then(Value::as_i64) == Some(0) {
+        return Err(AppError::ExternalService("cPanel could not save index.html.".into()));
+    }
+
+    let verify = client.get(website_url).send().await
+        .map_err(|e| AppError::ExternalService(format!("Website verification failed: {}", e)))?;
+    if !verify.status().is_success() {
+        return Err(AppError::ExternalService(format!("Website returned HTTP {} after installation.", verify.status())));
+    }
+    let live = verify.text().await.unwrap_or_default();
+    let verified = live.contains(&format!("api.goldetech.com/api/public/agents/{}/widget.js", public_key));
+    if !verified {
+        return Err(AppError::ExternalService("File was saved, but the live website did not expose the GOLD-e widget script yet.".into()));
+    }
+
+    let _ = sqlx::query(
+        "INSERT INTO ai_agent_channel_connections
+         (workspace_id,agent_id,channel,provider,status,display_name,config)
+         VALUES ($1,$2,'WEBSITE','GOLD-E','ACTIVE',$3,$4)
+         ON CONFLICT DO NOTHING"
+    )
+    .bind(workspace_id)
+    .bind(agent_id)
+    .bind(website_url)
+    .bind(json!({"installation":"cpanel","website_url":website_url,"file":"index.html","backup_file":backup_name}))
+    .execute(pool).await;
+
+    Ok(json!({
+        "installed": true,
+        "already_installed": false,
+        "website_url": website_url,
+        "public_key": public_key,
+        "file": "index.html",
+        "backup_file": backup_name
+    }))
+}
+
+
 pub async fn public_chat(pool:&PgPool, config:&Config, public_key:&str, dto:PublicAgentChatDto)->Result<PublicAgentChatResponse,AppError>{
     let agent=sqlx::query_as::<_,AiAgent>("SELECT * FROM ai_agents WHERE public_key=$1 AND status='ACTIVE'")
         .bind(public_key).fetch_optional(pool).await?
