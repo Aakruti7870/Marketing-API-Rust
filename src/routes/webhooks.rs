@@ -101,9 +101,21 @@ async fn handle_meta_webhook(
                         for message in messages {
                             let sender=message.get("from").and_then(|v|v.as_str()).unwrap_or_default();
                             let text=message.get("text").and_then(|v|v.get("body")).and_then(|v|v.as_str());
+                            let button_id=message.get("interactive")
+                                .and_then(|v|v.get("button_reply"))
+                                .and_then(|v|v.get("id"))
+                                .and_then(|v|v.as_str());
                             if !sender.is_empty() {
-                                if let Some(body)=text {
-                                    let account=value.get("metadata").and_then(|v|v.get("phone_number_id")).and_then(|v|v.as_str()).unwrap_or(account_id);
+                                let account=value.get("metadata").and_then(|v|v.get("phone_number_id")).and_then(|v|v.as_str()).unwrap_or(account_id);
+                                if let Some(button_id)=button_id {
+                                    match crate::services::playground_service::handle_button_action(&state.pool,&state.config,button_id,sender).await {
+                                        Ok(true)=>{},
+                                        Ok(false)=>{
+                                            tracing::warn!("Unknown GOLD-e Smart WhatsApp button id: {}",button_id);
+                                        },
+                                        Err(err)=>tracing::error!("Smart WhatsApp button handling failed: {}",err),
+                                    }
+                                } else if let Some(body)=text {
                                     if let Err(err)=crate::services::agent_service::handle_meta_inbound(&state.pool,&state.config,"WHATSAPP",account,sender,body).await {
                                         tracing::error!("AI WhatsApp inbound handling failed: {}",err);
                                     }
