@@ -152,6 +152,11 @@ function AgentStudio() {
   const [websiteConnectAgent,setWebsiteConnectAgent]=useState(null);
   const [websiteForm,setWebsiteForm]=useState({website_url:"",cpanel_host:"",cpanel_username:"",cpanel_token:""});
   const [websiteBusy,setWebsiteBusy]=useState(false);
+  const [domainAgent,setDomainAgent]=useState(null);
+  const [domainForm,setDomainForm]=useState({hostname:""});
+  const [domainData,setDomainData]=useState([]);
+  const [domainBusy,setDomainBusy]=useState(false);
+  const [domainNotice,setDomainNotice]=useState("");
   const [websiteNotice,setWebsiteNotice]=useState("");
 
   const load=async()=>{
@@ -217,6 +222,34 @@ CUSTOMER SCRIPT:
     setWebsiteForm({website_url:"https://",cpanel_host:"",cpanel_username:"",cpanel_token:""});
   };
 
+  const openDomainConnect=async(agent)=>{
+    setDomainAgent(agent);setDomainNotice("");setDomainForm({hostname:""});
+    try{const data=unwrap(await agentsApi.domains(agent.id));setDomainData(Array.isArray(data)?data:[]);}catch{setDomainData([]);}
+  };
+
+  const connectDomain=async()=>{
+    if(!domainAgent||!domainForm.hostname.trim())return;
+    setDomainBusy(true);setDomainNotice("");
+    try{
+      const data=unwrap(await agentsApi.connectDomain(domainAgent.id,domainForm.hostname.trim()));
+      const row=data?.data||data;
+      setDomainData(prev=>[row,...prev.filter(x=>x.id!==row?.id)]);
+      setDomainNotice("Domain registered. Add the CNAME record shown below, then verify.");
+    }catch(err){setDomainNotice(err?.response?.data?.error||err?.message||"Domain connection failed.");}
+    finally{setDomainBusy(false);}
+  };
+
+  const verifyDomain=async(domainId)=>{
+    setDomainBusy(true);setDomainNotice("");
+    try{
+      const data=unwrap(await agentsApi.verifyDomain(domainId));
+      const row=data?.data||data;
+      setDomainData(prev=>prev.map(x=>x.id===row.id?row:x));
+      setDomainNotice(data?.message||"Domain verification completed.");
+    }catch(err){setDomainNotice(err?.response?.data?.error||err?.message||"DNS verification failed.");}
+    finally{setDomainBusy(false);}
+  };
+
   const connectWebsite=async()=>{
     if(!websiteConnectAgent)return;
     setWebsiteBusy(true);setWebsiteNotice("");
@@ -249,7 +282,7 @@ CUSTOMER SCRIPT:
 
     <section className="agent-section"><div className="section-title"><div><div className="panel-kicker">DEPLOYED AGENTS</div><h2>Your customer-service workforce</h2></div></div>
       {agents.length===0?<div className="panel empty-state compact"><div className="empty-icon"><Bot/></div><h3>No AI agents yet.</h3><p>Create a business assistant, add your real business details, then deploy it to customer channels.</p></div>:
-      <div className="agent-list">{agents.map(agent=><div className="agent-card panel" key={agent.id}><div className="agent-card-icon"><Bot size={20}/></div><div className="agent-card-main"><div className="agent-card-title"><strong>{agent.name}</strong><span className={agent.status==="ACTIVE"?"status-pill":"status-pill draft"}>{agent.status}</span></div><small>{agent.role} · {agent.industry}</small><p>{agent.description}</p><div className="agent-capabilities">{(Array.isArray(agent.capabilities)?agent.capabilities:[]).slice(0,5).map(x=><span key={x}>{String(x).replaceAll("_"," ")}</span>)}</div></div><div className="agent-card-actions">{agent.status!=="ACTIVE"&&<button className="primary-btn compact" onClick={()=>deploy(agent)}><Rocket size={14}/>Deploy</button>}<button className="command-btn compact" disabled={agent.status!=="ACTIVE"} onClick={()=>openDeploy(agent)}><Globe2 size={14}/>Deploy channels</button><button className="primary-btn compact" disabled={agent.status!=="ACTIVE"} onClick={()=>openWebsiteConnect(agent)}><Globe2 size={14}/>Connect website</button><button className="ghost-btn compact" disabled={agent.status!=="ACTIVE"} onClick={()=>{setChatAgent(agent);setMessages([])}}><MessageSquare size={14}/>Test</button><button className="ghost-btn compact danger" onClick={()=>remove(agent)}><X size={14}/></button></div></div>)}</div>}
+      <div className="agent-list">{agents.map(agent=><div className="agent-card panel" key={agent.id}><div className="agent-card-icon"><Bot size={20}/></div><div className="agent-card-main"><div className="agent-card-title"><strong>{agent.name}</strong><span className={agent.status==="ACTIVE"?"status-pill":"status-pill draft"}>{agent.status}</span></div><small>{agent.role} · {agent.industry}</small><p>{agent.description}</p><div className="agent-capabilities">{(Array.isArray(agent.capabilities)?agent.capabilities:[]).slice(0,5).map(x=><span key={x}>{String(x).replaceAll("_"," ")}</span>)}</div></div><div className="agent-card-actions">{agent.status!=="ACTIVE"&&<button className="primary-btn compact" onClick={()=>deploy(agent)}><Rocket size={14}/>Deploy</button>}<button className="command-btn compact" disabled={agent.status!=="ACTIVE"} onClick={()=>openDeploy(agent)}><Globe2 size={14}/>Deploy channels</button><button className="primary-btn compact" disabled={agent.status!=="ACTIVE"} onClick={()=>openWebsiteConnect(agent)}><Globe2 size={14}/>Connect website</button><button className="command-btn compact" disabled={agent.status!=="ACTIVE"} onClick={()=>openDomainConnect(agent)}><Globe2 size={14}/>Custom domain</button><button className="ghost-btn compact" disabled={agent.status!=="ACTIVE"} onClick={()=>{setChatAgent(agent);setMessages([])}}><MessageSquare size={14}/>Test</button><button className="ghost-btn compact danger" onClick={()=>remove(agent)}><X size={14}/></button></div></div>)}</div>}
     </section>
 
     {createOpen&&<div className="agent-modal-backdrop" onClick={closeCreate}><div className="agent-modal wide" onClick={e=>e.stopPropagation()}><div className="run-modal-head"><div><div className="panel-kicker">BUSINESS SETUP</div><h2>{selectedTemplate?.name||"Choose a template"}</h2></div><button className="icon-circle" onClick={closeCreate}><X size={17}/></button></div>
@@ -285,6 +318,18 @@ CUSTOMER SCRIPT:
       {websiteNotice&&<div className={"alert "+(websiteNotice.includes("live")||websiteNotice.includes("already")?"success":"error")}>{websiteNotice}</div>}
       <button className="primary-btn full-btn" disabled={websiteBusy||!websiteForm.website_url||!websiteForm.cpanel_host||!websiteForm.cpanel_username||!websiteForm.cpanel_token} onClick={connectWebsite}>{websiteBusy?"Connecting and installing…":"Connect & install automatically"}<Rocket size={15}/></button>
       <div className="inspector-note">Need a cPanel token? In cPanel, open <b>Security → Manage API Tokens</b> and create a token for GOLD-e.</div>
+    </div></div>}
+
+    {domainAgent&&<div className="agent-modal-backdrop" onClick={()=>setDomainAgent(null)}><div className="agent-modal wide" onClick={e=>e.stopPropagation()}>
+      <div className="run-modal-head"><div><div className="panel-kicker">CUSTOM DOMAIN</div><h2>Connect {domainAgent.name}</h2><span>Give this AI agent its own customer-facing hostname.</span></div><button className="icon-circle" onClick={()=>setDomainAgent(null)}><X size={17}/></button></div>
+      <div className="inspector-note"><b>How it works:</b> enter a subdomain such as <code>chat.example.com</code>. GOLD-e gives you one CNAME record. After DNS propagation, click Verify. The domain then serves this agent automatically.</div>
+      <label className="inspector-label">Customer hostname<input value={domainForm.hostname} onChange={e=>setDomainForm({hostname:e.target.value})} placeholder="chat.example.com"/></label>
+      {domainNotice&&<div className={"alert "+(domainNotice.includes("verified")||domainNotice.includes("completed")?"success":"error")}>{domainNotice}</div>}
+      <button className="primary-btn full-btn" disabled={domainBusy||!domainForm.hostname.trim()} onClick={connectDomain}>{domainBusy?"Working…":"Create DNS connection"}<Globe2 size={15}/></button>
+      <div className="deployment-list"><div className="panel-kicker">CONNECTED DOMAINS</div>
+      {domainData.length===0?<span className="muted">No custom domains connected yet.</span>:domainData.map(d=><div className="deployment-row" key={d.id}><span className="status-pill">{d.status}</span><span>{d.hostname}</span><button className="row-action" disabled={domainBusy} onClick={()=>verifyDomain(d.id)}>Verify</button></div>)}</div>
+      {domainData.filter(d=>d.status!=="DNS_CONNECTED").map(d=><div className="inspector-note" key={"dns-"+d.id}><b>DNS record:</b> <code>{d.hostname}</code> → <code>{d.dns_target||"customers.goldetech.com"}</code></div>)}
+      {domainData.filter(d=>d.status==="DNS_CONNECTED").map(d=><div className="inspector-note" key={"live-"+d.id}><b>Live:</b> <a href={"https://"+d.hostname} target="_blank" rel="noreferrer">https://{d.hostname}</a></div>)}
     </div></div>}
 
     {chatAgent&&<div className="agent-modal-backdrop" onClick={()=>setChatAgent(null)}><div className="agent-chat-modal" onClick={e=>e.stopPropagation()}><div className="run-modal-head"><div><div className="panel-kicker">LIVE CUSTOMER TEST</div><h2>{chatAgent.name}</h2><span>{chatAgent.role}</span></div><button className="icon-circle" onClick={()=>setChatAgent(null)}><X size={17}/></button></div><div className="agent-chat-messages">{messages.length===0?<div className="agent-chat-empty"><Bot size={28}/><strong>Test the customer experience</strong><span>Try: “I need an appointment tomorrow morning.”</span></div>:messages.map((m,i)=><div key={i} className={"chat-bubble "+m.role}><span>{m.content}</span></div>)}{chatting&&<div className="chat-bubble assistant"><span>Thinking…</span></div>}</div><div className="agent-chat-input"><input value={message} onChange={e=>setMessage(e.target.value)} onKeyDown={e=>e.key==="Enter"&&sendMessage()} placeholder="Talk to your AI agent…"/><button className="primary-btn compact" onClick={sendMessage} disabled={chatting||!message.trim()}><ArrowRight size={16}/></button></div></div></div>}
