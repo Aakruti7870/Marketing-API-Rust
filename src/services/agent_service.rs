@@ -353,6 +353,11 @@ pub async fn chat(
         let message = payload.get("error").and_then(|e| e.get("message")).and_then(Value::as_str)
             .or_else(|| payload.get("message").and_then(Value::as_str))
             .unwrap_or("AI provider returned an error");
+        let preview: String = raw_body.chars().take(2000).collect();
+        tracing::error!(
+            "AI provider request failed: HTTP {} model={} base_url={} message={} body={}",
+            status, model, base_url, message, preview
+        );
         return Err(AppError::ExternalService(format!("HTTP {}: {}", status, message)));
     }
 
