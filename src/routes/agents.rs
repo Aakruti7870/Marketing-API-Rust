@@ -15,6 +15,15 @@ use axum::{
     Json, Router,
 };
 use serde::Deserialize;
+
+#[derive(Deserialize)]
+struct ConnectWebsiteDto {
+    website_url: String,
+    cpanel_host: String,
+    cpanel_username: String,
+    cpanel_token: String,
+}
+
 use uuid::Uuid;
 
 pub fn routes(state: AppState) -> Router {
@@ -27,6 +36,7 @@ pub fn routes(state: AppState) -> Router {
         .route("/conversations/:conversation_id", get(get_conversation))
         .route("/conversations/:conversation_id/reply", post(owner_reply))
         .route("/:id/channels", get(list_channels).post(create_channel))
+        .route("/:id/website/connect", post(connect_website))
         .route("/channels/:channel_id", delete(delete_channel))
         .route("/runs", get(list_runs).post(create_run))
         .route("/runs/:id", get(get_run))
@@ -174,6 +184,28 @@ async fn create_channel(
     Ok(json_success(
         agent_service::create_channel_connection(&state.pool, &state.config, tenant.workspace_id, id, dto).await?,
         "Agent channel deployed",
+    ))
+}
+
+
+async fn connect_website(
+    State(state): State<AppState>,
+    tenant: TenantContext,
+    Path(id): Path<Uuid>,
+    Json(dto): Json<ConnectWebsiteDto>,
+) -> Result<impl IntoResponse, AppError> {
+    require_workspace_roles(&tenant.workspace_role, &["OWNER", "ADMIN"])?;
+    Ok(json_success(
+        agent_service::connect_website_via_cpanel(
+            &state.pool,
+            tenant.workspace_id,
+            id,
+            &dto.website_url,
+            &dto.cpanel_host,
+            &dto.cpanel_username,
+            &dto.cpanel_token,
+        ).await?,
+        "Website connected and GOLD-e widget installed",
     ))
 }
 
