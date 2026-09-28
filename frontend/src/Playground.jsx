@@ -3,7 +3,7 @@ import {
   Bot, Image, Mail, MessageSquare, Search, Sparkles, Send, Copy, Check,
   Share2, RefreshCw, Wand2, FileText, Upload
 } from "lucide-react";
-import { agentsApi, playgroundApi, unwrap } from "./services/api";
+import { agentsApi, playgroundApi, automationsApi, unwrap } from "./services/api";
 import "./Playground.css";
 
 const TABS = [
@@ -27,6 +27,9 @@ function Playground() {
   const [assets,setAssets]=useState([]);
   const [groups,setGroups]=useState([]);
   const [channels,setChannels]=useState([]);
+  const [automations,setAutomations]=useState([]);
+  const [selectedAgentId,setSelectedAgentId]=useState("");
+  const [smartActions,setSmartActions]=useState([]);
   const [selectedChannel,setSelectedChannel]=useState("");
   const [selectedGroup,setSelectedGroup]=useState("");
   const [selectedAsset,setSelectedAsset]=useState("");
@@ -38,11 +41,13 @@ function Playground() {
 
   const loadData=async()=>{
     try{
-      const [g,x,a]=await Promise.all([playgroundApi.groups(),playgroundApi.assets(),agentsApi.list()]);
+      const [g,x,a,au]=await Promise.all([playgroundApi.groups(),playgroundApi.assets(),agentsApi.list(),automationsApi.list()]);
       setGroups(unwrap(g)||[]);
       setAssets(unwrap(x)||[]);
       const agentList=unwrap(a)||[];
+      setAutomations(unwrap(au)||[]);
       const active=agentList.find(v=>v.status==="ACTIVE");
+      setSelectedAgentId(prev=>prev||active?.id||"");
       if(active){
         const cs=unwrap(await agentsApi.channels(active.id))||[];
         const wa=cs.filter(c=>c.channel==="WHATSAPP" && c.status==="ACTIVE");
@@ -53,6 +58,11 @@ function Playground() {
   };
   useEffect(()=>{loadData()},[]);
 
+  const loadButtonActions=async(assetId)=>{
+    if(!assetId)return;
+    try{setSmartActions(unwrap(await playgroundApi.buttonActions(assetId))||[]);}catch(e){setError(e?.response?.data?.error||e?.message||"Could not load button actions.");}
+  };
+
   const runText=async(kind=mode)=>{
     if(!prompt.trim()||busy)return;
     const request=prompt.trim();
@@ -61,6 +71,7 @@ function Playground() {
     try{
       const data=unwrap(await playgroundApi.generate({kind,prompt:request,business_context:context}));
       setChat(prev=>[...prev,{role:"assistant",content:data?.content||"",asset:data}]);
+      if(kind==="SMART_WHATSAPP" && data?.id) await loadButtonActions(data.id);
       await loadData();
     }catch(e){
       const message=e?.response?.data?.error||e?.message||"Generation failed.";
@@ -78,6 +89,16 @@ function Playground() {
       await loadData();
     }catch(e){setError(e?.response?.data?.error||e?.message||"Image generation failed.");}
     finally{setBusy(false);}
+  };
+
+
+  const saveAction=async(button, actionType, automationId="")=>{
+    if(!selectedAgentId)return setError("Select or deploy an active AI Agent before assigning button actions.");
+    try{
+      const payload=actionType==="AUTOMATION"?{automation_id:automationId}:{message:button.payload||button.title};
+      await playgroundApi.saveButtonAction({button_id:button.id,asset_id:button.assetId,agent_id:selectedAgentId,title:button.title,action_type:actionType,action_payload:payload});
+      await loadButtonActions(button.assetId); setNotice("Button action saved.");
+    }catch(e){setError(e?.response?.data?.error||e?.message||"Could not save button action.");}
   };
 
   const copyText=async(text)=>{
