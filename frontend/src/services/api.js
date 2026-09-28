@@ -149,6 +149,7 @@ export const agentsApi = {
   deleteAgent: (id) => api.delete(`/agents/${id}`),
   channels: (id) => api.get(`/agents/${id}/channels`),
   deployChannel: (id, payload) => api.post(`/agents/${id}/channels`, payload),
+  connectWebsite: (id, payload) => api.post(`/agents/${id}/website/connect`, payload),
   removeChannel: (channelId) => api.delete(`/agents/channels/${channelId}`),
   chat: (id, payload) => api.post(`/agents/${id}/chat`, payload),
   conversations: (id) => api.get(`/agents/${id}/conversations`),
