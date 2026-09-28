@@ -983,7 +983,10 @@ pub async fn handle_meta_inbound(
         }),
     };
     let target_id = connection.external_account_id.as_deref().unwrap_or(external_account_id);
-    let url=format!("https://graph.facebook.com/v20.0/{}/messages",target_id);
+    let url=match channel {
+        "INSTAGRAM" => format!("https://graph.instagram.com/v26.0/{}/messages",target_id),
+        _ => format!("https://graph.facebook.com/v20.0/{}/messages",target_id),
+    };
     let response=http.post(url).bearer_auth(token).json(&payload).send().await
         .map_err(|e|AppError::ExternalService(format!("Meta send failed: {}",e)))?;
     if !response.status().is_success() {
