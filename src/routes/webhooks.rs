@@ -49,20 +49,59 @@ async fn handle_whatsapp_webhook(
 ) -> impl IntoResponse {
     info!("📩 Received WhatsApp webhook notification: {:?}", payload);
 
-    // Update message delivery statuses if status array exists
-    if let Some(entry) = payload["entry"].as_array().and_then(|a| a.first()) {
-        if let Some(changes) = entry["changes"].as_array().and_then(|a| a.first()) {
-            if let Some(statuses) = changes["value"]["statuses"].as_array() {
-                for s in statuses {
-                    if let (Some(id), Some(status)) = (s["id"].as_str(), s["status"].as_str()) {
-                        let normalized_status = status.to_uppercase();
-                        let _ = sqlx::query!(
-                            "UPDATE messages SET status = $1, updated_at = NOW() WHERE external_message_id = $2",
-                            normalized_status,
-                            id
-                        )
-                        .execute(&state.pool)
-                        .await;
+    // Process WhatsApp status updates and inbound messages.
+    if let Some(entries) = payload.get("entry").and_then(|v| v.as_array()) {
+        for entry in entries {
+            if let Some(changes) = entry.get("changes").and_then(|v| v.as_array()) {
+                for change in changes {
+                    let value = &change["value"];
+
+                    if let Some(statuses) = value.get("statuses").and_then(|v| v.as_array()) {
+                        for s in statuses {
+                            if let (Some(id), Some(status)) = (s["id"].as_str(), s["status"].as_str()) {
+                                let normalized_status = status.to_uppercase();
+                                let _ = sqlx::query!(
+                                    "UPDATE messages SET status = $1, updated_at = NOW() WHERE external_message_id = $2",
+                                    normalized_status,
+                                    id
+                                )
+                                .execute(&state.pool)
+                                .await;
+                            }
+                        }
+                    }
+
+                    let phone_number_id = value
+                        .get("metadata")
+                        .and_then(|v| v.get("phone_number_id"))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or_default();
+
+                    if let Some(messages) = value.get("messages").and_then(|v| v.as_array()) {
+                        for message in messages {
+                            let sender = message.get("from").and_then(|v| v.as_str()).unwrap_or_default();
+                            let text = message
+                                .get("text")
+                                .and_then(|v| v.get("body"))
+                                .and_then(|v| v.as_str());
+
+                            if !sender.is_empty() {
+                                if let Some(body) = text {
+                                    if let Err(err) = crate::services::agent_service::handle_meta_inbound(
+                                        &state.pool,
+                                        &state.config,
+                                        "WHATSAPP",
+                                        phone_number_id,
+                                        sender,
+                                        body,
+                                    )
+                                    .await
+                                    {
+                                        tracing::error!("AI WhatsApp inbound handling failed: {}", err);
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
