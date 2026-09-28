@@ -235,3 +235,14 @@ pub struct AgentConversationSummary {
 pub struct OwnerReplyDto {
     pub message: String,
 }
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct PlaygroundButtonActionDto {
+    pub button_id: String,
+    pub asset_id: Uuid,
+    pub agent_id: Option<Uuid>,
+    pub title: String,
+    pub action_type: String,
+    #[serde(default)]
+    pub action_payload: serde_json::Value,
+}

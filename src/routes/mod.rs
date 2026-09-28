@@ -9,6 +9,7 @@ pub mod analytics;
 pub mod webhooks;
 pub mod automations;
 pub mod automation_webhooks;
+pub mod playground;
 
 use crate::state::AppState;
 use axum::{routing::get, Json, Router};
@@ -27,6 +28,8 @@ pub fn create_api_router(state: AppState) -> Router {
         .nest("/api/v1/analytics", analytics::routes(state.clone()))
         .nest("/api/v1/webhooks", webhooks::routes(state.clone()))
 .nest("/api/v1/automations", automations::routes(state.clone()))
+        .nest("/api/v1/playground", playground::routes(state.clone()))
+        .nest("/api/public/playground", playground::public_routes(state.clone()))
         .nest("/api/v1/automation-webhooks", axum::Router::new()
             .route("/:id", axum::routing::post(automation_webhooks::handle))
             .with_state(state.clone()))

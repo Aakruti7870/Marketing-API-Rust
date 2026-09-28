@@ -22,7 +22,9 @@ pub struct Config {
     pub ai_api_key: Option<String>,
     pub ai_api_base_url: String,
     pub ai_model: String,
+    pub ai_image_model: String,
     pub ai_temperature: f32,
+    pub public_base_url: String,
     pub channel_encryption_key: Option<String>,
 }
 
@@ -91,7 +93,9 @@ impl Config {
         let ai_api_key = env::var("AI_API_KEY").ok();
         let ai_api_base_url = env::var("AI_API_BASE_URL").unwrap_or_else(|_| "https://api.openai.com/v1".to_string());
         let ai_model = env::var("AI_MODEL").unwrap_or_else(|_| "gpt-5.6-luna".to_string());
+        let ai_image_model = env::var("AI_IMAGE_MODEL").unwrap_or_else(|_| "gpt-image-2".to_string());
         let ai_temperature = env::var("AI_TEMPERATURE").ok().and_then(|v| v.parse::<f32>().ok()).unwrap_or(0.2);
+        let public_base_url = env::var("PUBLIC_BASE_URL").unwrap_or_else(|_| "https://api.goldetech.com".to_string());
         let channel_encryption_key = env::var("CHANNEL_ENCRYPTION_KEY").ok();
 
         Ok(Self {
@@ -115,7 +119,9 @@ impl Config {
             ai_api_key,
             ai_api_base_url,
             ai_model,
+            ai_image_model,
             ai_temperature,
+            public_base_url,
             channel_encryption_key,
         })
     }
