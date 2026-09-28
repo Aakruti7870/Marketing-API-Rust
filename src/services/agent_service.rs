@@ -325,7 +325,6 @@ pub async fn chat(
     let body = json!({
         "model": model,
         "messages": messages,
-        "temperature": config.ai_temperature
     });
 
     let response = Client::new()
