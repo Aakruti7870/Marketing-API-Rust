@@ -42,7 +42,7 @@ fn system_prompt(kind: &str) -> &'static str {
     match kind {
         "EMAIL_TEMPLATE" => "Create a production-ready business email template. Return subject, preheader, body copy, CTA and a concise plain-text version. Do not invent claims, prices or guarantees.",
         "WHATSAPP_TEMPLATE" => "Create a concise WhatsApp business message template with a clear purpose, variables like {{name}} when useful, and a compliant call to action. Avoid spammy claims.",
-        "SMART_WHATSAPP" => "Create a smart WhatsApp customer message. Return a short message plus 2-4 quick-reply button labels and machine-readable button payloads that can map to GOLD-e bot intents or automations. Keep it natural and useful.",
+        "SMART_WHATSAPP" => "Create a smart WhatsApp customer message. Return ONLY valid JSON with this exact shape: {\"message\":\"short customer message\",\"buttons\":[{\"title\":\"max 20 chars\",\"payload\":\"short machine-readable response\"}]}. Return 1-3 buttons only. Button titles must be concise. Payload should be the natural customer intent/reply that GOLD-e Bot should receive. No markdown, no code fence, no extra text.",
         "SEO" => "Act as an SEO strategist. Produce a structured SEO package: primary keyword, secondary keywords, title tag, meta description, URL slug, H1, supporting headings, FAQ questions, internal-link suggestions, Open Graph title/description and JSON-LD type. Never promise rankings.",
         _ => "Create polished marketing copy for the requested business asset. Keep claims grounded in the supplied business context and optimize for clarity, conversion and brand consistency.",
     }
@@ -77,21 +77,68 @@ async fn chat_generate(config: &Config, kind: &str, prompt: &str, context: &str)
         .ok_or_else(|| AppError::ExternalService("AI provider returned no text output".into()))
 }
 
+
 pub async fn generate_text(
     config: &Config, pool: &PgPool, workspace_id: Uuid, user_id: Uuid,
     kind: &str, prompt: &str, context: &str,
 ) -> Result<Value, AppError> {
     let kind = validate_kind(kind)?;
-    let content = chat_generate(config, &kind, prompt, context).await?;
+    let raw_content = chat_generate(config, &kind, prompt, context).await?;
     let id = Uuid::new_v4();
+
+    let (content, metadata) = if kind == "SMART_WHATSAPP" {
+        let cleaned = raw_content.trim();
+        let parsed: Value = serde_json::from_str(cleaned)
+            .map_err(|_| AppError::ExternalService("Smart WhatsApp generator returned invalid structured output.".into()))?;
+        let message = parsed.get("message").and_then(Value::as_str).unwrap_or("").trim();
+        if message.is_empty() || message.len() > 1024 {
+            return Err(AppError::Validation("Smart WhatsApp message must contain 1-1024 characters.".into()));
+        }
+        let input_buttons = parsed.get("buttons").and_then(Value::as_array)
+            .ok_or_else(|| AppError::Validation("Smart WhatsApp output must contain buttons.".into()))?;
+        if input_buttons.is_empty() || input_buttons.len() > 3 {
+            return Err(AppError::Validation("Smart WhatsApp supports 1-3 reply buttons.".into()));
+        }
+        let buttons: Vec<Value> = input_buttons.iter().enumerate().filter_map(|(i,b)| {
+            let title = b.get("title").and_then(Value::as_str).unwrap_or("").trim().chars().take(20).collect::<String>();
+            if title.is_empty() { return None; }
+            let payload = b.get("payload").and_then(Value::as_str).unwrap_or(title.as_str()).trim().to_string();
+            Some(json!({"id":format!("gpe_{}_{}", id.simple(), i+1),"title":title,"payload":payload}))
+        }).collect();
+        if buttons.is_empty() {
+            return Err(AppError::Validation("Smart WhatsApp output contains no valid buttons.".into()));
+        }
+        (message.to_string(), json!({"buttons":buttons,"video_generation":false}))
+    } else {
+        (raw_content, json!({"video_generation":false}))
+    };
+
     sqlx::query(
         "INSERT INTO playground_assets (id,workspace_id,kind,title,prompt,content,metadata,created_by_id)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8)"
     )
     .bind(id).bind(workspace_id).bind(&kind).bind(format!("{} draft", kind.replace('_', " ")))
-    .bind(prompt).bind(&content).bind(json!({})).bind(user_id)
+    .bind(prompt).bind(&content).bind(&metadata).bind(user_id)
     .execute(pool).await?;
-    Ok(json!({"id":id,"kind":kind,"content":content}))
+
+    if kind == "SMART_WHATSAPP" {
+        if let Some(buttons) = metadata.get("buttons").and_then(Value::as_array) {
+            for button in buttons {
+                sqlx::query(
+                    "INSERT INTO playground_button_actions(button_id,workspace_id,asset_id,title,action_type,action_payload)
+                     VALUES($1,$2,$3,$4,'BOT_REPLY',$5)
+                     ON CONFLICT(button_id) DO NOTHING"
+                )
+                .bind(button.get("id").and_then(Value::as_str).unwrap_or(""))
+                .bind(workspace_id).bind(id)
+                .bind(button.get("title").and_then(Value::as_str).unwrap_or(""))
+                .bind(json!({"message":button.get("payload").and_then(Value::as_str).unwrap_or("")}))
+                .execute(pool).await?;
+            }
+        }
+    }
+
+    Ok(json!({"id":id,"kind":kind,"content":content,"metadata":metadata}))
 }
 
 pub async fn generate_image(
