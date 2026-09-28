@@ -10,6 +10,7 @@ pub mod webhooks;
 pub mod automations;
 pub mod automation_webhooks;
 pub mod playground;
+pub mod custom_domains;
 
 use crate::state::AppState;
 use axum::{routing::get, Json, Router};
@@ -17,9 +18,11 @@ use serde_json::json;
 
 pub fn create_api_router(state: AppState) -> Router {
     Router::new()
+        .route("/", get(custom_domains::landing))
         .route("/health", get(health_check))
         .nest("/api/v1/auth", auth::routes(state.clone()))
         .nest("/api/v1/workspaces", workspaces::routes(state.clone()))
+        .nest("/api/v1/custom-domains", custom_domains::routes(state.clone()))
         .nest("/api/v1/contacts", contacts::routes(state.clone()))
         .nest("/api/v1/campaigns", campaigns::routes(state.clone()))
         .nest("/api/v1/messages", messages::routes(state.clone()))
