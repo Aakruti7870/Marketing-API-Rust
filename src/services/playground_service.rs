@@ -88,8 +88,18 @@ pub async fn generate_text(
 
     let (content, metadata) = if kind == "SMART_WHATSAPP" {
         let cleaned = raw_content.trim();
-        let parsed: Value = serde_json::from_str(cleaned)
-            .map_err(|_| AppError::ExternalService("Smart WhatsApp generator returned invalid structured output.".into()))?;
+        let parsed: Value = match serde_json::from_str(cleaned) {
+            Ok(value) => value,
+            Err(_) => {
+                let start = cleaned.find('{');
+                let end = cleaned.rfind('}');
+                match (start, end) {
+                    (Some(s), Some(e)) if e > s => serde_json::from_str(&cleaned[s..=e])
+                        .map_err(|_| AppError::ExternalService("Smart WhatsApp generator returned invalid structured output.".into()))?,
+                    _ => return Err(AppError::ExternalService("Smart WhatsApp generator returned invalid structured output.".into())),
+                }
+            }
+        };
         let message = parsed.get("message").and_then(Value::as_str).unwrap_or("").trim();
         if message.is_empty() || message.len() > 1024 {
             return Err(AppError::Validation("Smart WhatsApp message must contain 1-1024 characters.".into()));
