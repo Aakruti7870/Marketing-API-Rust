@@ -209,3 +209,39 @@
 .owner-reply-box{display:flex;gap:10px;padding:12px;border-top:1px solid #eee8f4;background:#fff}
 .owner-reply-box textarea{min-height:48px;max-height:130px;resize:vertical;flex:1;border:1px solid #ddd4e8;border-radius:10px;padding:11px;font:inherit;outline:none}
 @media(max-width:900px){.inbox-grid{grid-template-columns:1fr}.conversation-list{max-height:360px}.conversation-scroll{max-height:280px}.conversation-detail{min-height:560px}.inbox-toolbar{align-items:stretch;flex-direction:column}.inbox-toolbar select{width:100%}}
+
+/* Responsive workflow inspector: never hide node settings on touch devices. */
+@media(max-width:1100px){
+  .automation-builder{grid-template-rows:auto minmax(0,1fr)}
+  .builder-layout{grid-template-columns:220px minmax(0,1fr);grid-template-rows:minmax(280px,1fr) auto;overflow:auto}
+  .node-inspector{display:block;grid-column:1 / -1;grid-row:2;border-left:0;border-top:1px solid var(--line);padding:18px;max-height:42vh;overflow:auto}
+  .builder-canvas-wrap{grid-column:2;grid-row:1;min-height:320px}
+  .node-library{grid-column:1;grid-row:1;min-height:320px}
+  .inspector-empty{min-height:90px}
+}
+@media(max-width:760px){
+  .automation-builder{grid-template-rows:auto minmax(0,1fr)}
+  .builder-topbar{gap:8px;padding:8px}
+  .builder-title{width:100%;gap:8px}
+  .builder-title>div{flex:1}
+  .builder-actions{width:100%;overflow-x:auto;flex-wrap:nowrap;padding-bottom:3px}
+  .builder-actions button{flex:none}
+  .builder-layout{grid-template-columns:112px minmax(0,1fr);grid-template-rows:minmax(300px,1fr) auto;overflow:auto}
+  .node-library{padding:10px 6px;min-width:0}
+  .library-head h3{font-size:13px}
+  .node-group>span{font-size:8px}
+  .library-node{padding:8px 5px;gap:5px}
+  .library-node strong{font-size:9px}
+  .library-node small{display:none}
+  .library-node .node-tone{width:24px;height:24px}
+  .builder-canvas-wrap{min-width:0;grid-column:2;grid-row:1}
+  .canvas-toolbar{padding:0 8px}
+  .canvas-stats{gap:6px;font-size:9px}
+  .node-inspector{grid-column:1 / -1;grid-row:2;max-height:none;min-height:180px;padding:14px}
+  .inspector-head{margin-bottom:12px}
+  .inspector-head h3{font-size:16px}
+  .inspector-label{font-size:11px}
+  .inspector-label input,.inspector-label select,.inspector-label textarea{font-size:14px}
+  .workflow-node{touch-action:pan-y}
+  .automation-hero{align-items:flex-start;flex-direction:column}
+}
