@@ -81,6 +81,34 @@ jobs:
             -C target/release golde-marketing-api
           tar -tzf /tmp/golde-marketing-api-release.tar.gz
 
+      - name: Verify GitHub OIDC subject
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${ACTIONS_ID_TOKEN_REQUEST_URL:?GitHub OIDC request URL is unavailable}"
+          : "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:?GitHub OIDC request token is unavailable}"
+
+          TOKEN_URL="${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=sts.amazonaws.com"
+          RESPONSE="$(curl -fsS \
+            -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+            "${TOKEN_URL}")"
+          JWT="$(python -c 'import json,sys; print(json.load(sys.stdin)["value"])' <<< "${RESPONSE}")"
+
+          python - "${JWT}" <<'PY'
+          import base64
+          import json
+          import sys
+
+          parts = sys.argv[1].split(".")
+          if len(parts) != 3:
+              raise SystemExit("Invalid JWT format")
+          payload = parts[1]
+          payload += "=" * (-len(payload) % 4)
+          claims = json.loads(base64.urlsafe_b64decode(payload))
+          for key in ("sub", "aud", "repository", "repository_id", "repository_owner_id", "environment", "ref", "job_workflow_ref"):
+              print(f"{key}: {claims.get(key)}")
+          PY
+
       - name: Configure AWS credentials using GitHub OIDC
         uses: aws-actions/configure-aws-credentials@v4
         with:
