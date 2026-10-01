@@ -51,14 +51,13 @@ pub async fn get_contact(
     workspace_id: Uuid,
     contact_id: Uuid,
 ) -> Result<Contact, AppError> {
-    let contact = sqlx::query_as::<_, Contact>(
-        "SELECT * FROM contacts WHERE id = $1 AND workspace_id = $2"
-    )
-    .bind(contact_id)
-    .bind(workspace_id)
-    .fetch_optional(pool)
-    .await?
-    .ok_or_else(|| AppError::NotFound("Contact not found".to_string()))?;
+    let contact =
+        sqlx::query_as::<_, Contact>("SELECT * FROM contacts WHERE id = $1 AND workspace_id = $2")
+            .bind(contact_id)
+            .bind(workspace_id)
+            .fetch_optional(pool)
+            .await?
+            .ok_or_else(|| AppError::NotFound("Contact not found".to_string()))?;
 
     Ok(contact)
 }
@@ -114,7 +113,7 @@ pub async fn update_contact(
              custom_fields = COALESCE($11, custom_fields),
              updated_at = NOW()
          WHERE id = $1 AND workspace_id = $2
-         RETURNING *"
+         RETURNING *",
     )
     .bind(contact_id)
     .bind(workspace_id)

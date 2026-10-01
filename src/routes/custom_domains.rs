@@ -52,7 +52,7 @@ async fn connect_domain(
 
     let hostname = normalize_hostname(&dto.hostname)?;
     let agent = sqlx::query_as::<_, crate::models::AiAgent>(
-        "SELECT * FROM ai_agents WHERE id=$1 AND workspace_id=$2"
+        "SELECT * FROM ai_agents WHERE id=$1 AND workspace_id=$2",
     )
     .bind(dto.agent_id)
     .bind(tenant.workspace_id)
@@ -61,20 +61,26 @@ async fn connect_domain(
     .ok_or_else(|| AppError::NotFound("AI agent not found".into()))?;
 
     if agent.status != "ACTIVE" {
-        return Err(AppError::BadRequest("Deploy the AI agent before connecting a domain.".into()));
+        return Err(AppError::BadRequest(
+            "Deploy the AI agent before connecting a domain.".into(),
+        ));
     }
     if agent.public_key.is_none() {
-        return Err(AppError::BadRequest("This AI agent has no public widget key.".into()));
+        return Err(AppError::BadRequest(
+            "This AI agent has no public widget key.".into(),
+        ));
     }
 
-    if let Some(existing) = sqlx::query_as::<_, CustomDomain>(
-        "SELECT * FROM ai_agent_custom_domains WHERE hostname=$1"
-    )
-    .bind(&hostname)
-    .fetch_optional(&state.pool)
-    .await? {
+    if let Some(existing) =
+        sqlx::query_as::<_, CustomDomain>("SELECT * FROM ai_agent_custom_domains WHERE hostname=$1")
+            .bind(&hostname)
+            .fetch_optional(&state.pool)
+            .await?
+    {
         if existing.workspace_id != tenant.workspace_id || existing.agent_id != dto.agent_id {
-            return Err(AppError::Conflict("This hostname is already connected to another AI agent.".into()));
+            return Err(AppError::Conflict(
+                "This hostname is already connected to another AI agent.".into(),
+            ));
         }
         return Ok((
             StatusCode::OK,
@@ -82,7 +88,7 @@ async fn connect_domain(
                 "success": true,
                 "data": domain_payload(existing, &agent.name),
                 "message": "Domain connection already exists"
-            }))
+            })),
         ));
     }
 
@@ -90,7 +96,7 @@ async fn connect_domain(
         "INSERT INTO ai_agent_custom_domains
          (id,workspace_id,agent_id,hostname,status,dns_target)
          VALUES ($1,$2,$3,$4,'PENDING_DNS',$5)
-         RETURNING *"
+         RETURNING *",
     )
     .bind(Uuid::new_v4())
     .bind(tenant.workspace_id)
@@ -106,7 +112,7 @@ async fn connect_domain(
             "success": true,
             "data": domain_payload(domain, &agent.name),
             "message": "Domain created. Add the CNAME record, then verify."
-        }))
+        })),
     ))
 }
 
@@ -118,7 +124,7 @@ async fn list_agent_domains(
     let rows = sqlx::query_as::<_, CustomDomain>(
         "SELECT * FROM ai_agent_custom_domains
          WHERE workspace_id=$1 AND agent_id=$2
-         ORDER BY created_at DESC"
+         ORDER BY created_at DESC",
     )
     .bind(tenant.workspace_id)
     .bind(agent_id)
@@ -134,7 +140,7 @@ async fn verify_domain(
     Path(id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
     let domain = sqlx::query_as::<_, CustomDomain>(
-        "SELECT * FROM ai_agent_custom_domains WHERE id=$1 AND workspace_id=$2"
+        "SELECT * FROM ai_agent_custom_domains WHERE id=$1 AND workspace_id=$2",
     )
     .bind(id)
     .bind(tenant.workspace_id)
@@ -143,7 +149,7 @@ async fn verify_domain(
     .ok_or_else(|| AppError::NotFound("Custom domain not found".into()))?;
 
     let agent = sqlx::query_as::<_, crate::models::AiAgent>(
-        "SELECT * FROM ai_agents WHERE id=$1 AND workspace_id=$2"
+        "SELECT * FROM ai_agents WHERE id=$1 AND workspace_id=$2",
     )
     .bind(domain.agent_id)
     .bind(tenant.workspace_id)
@@ -157,7 +163,7 @@ async fn verify_domain(
         "UPDATE ai_agent_custom_domains
          SET status=$1,last_dns_status=$2,updated_at=NOW()
          WHERE id=$3
-         RETURNING *"
+         RETURNING *",
     )
     .bind(status)
     .bind(if dns { "MATCH" } else { "NOT_MATCHED" })
@@ -184,27 +190,42 @@ async fn check_cname(hostname: &str, expected: &str) -> Result<bool, AppError> {
         .map_err(|e| AppError::ExternalService(format!("DNS response could not be read: {}", e)))?;
 
     let expected = expected.trim_end_matches('.').to_ascii_lowercase();
-    Ok(body.get("Answer")
+    Ok(body
+        .get("Answer")
         .and_then(|v| v.as_array())
-        .map(|answers| answers.iter().any(|answer| {
-            answer.get("type").and_then(|v| v.as_i64()) == Some(5)
-                && answer.get("data").and_then(|v| v.as_str())
-                    .map(|v| v.trim_end_matches('.').eq_ignore_ascii_case(&expected))
-                    .unwrap_or(false)
-        }))
+        .map(|answers| {
+            answers.iter().any(|answer| {
+                answer.get("type").and_then(|v| v.as_i64()) == Some(5)
+                    && answer
+                        .get("data")
+                        .and_then(|v| v.as_str())
+                        .map(|v| v.trim_end_matches('.').eq_ignore_ascii_case(&expected))
+                        .unwrap_or(false)
+            })
+        })
         .unwrap_or(false))
 }
 
 fn normalize_hostname(raw: &str) -> Result<String, AppError> {
     let value = raw.trim().trim_end_matches('.').to_ascii_lowercase();
     if value.is_empty() || value.len() > 255 || value.contains('/') || value.contains("://") {
-        return Err(AppError::Validation("Enter a valid hostname such as chat.example.com.".into()));
+        return Err(AppError::Validation(
+            "Enter a valid hostname such as chat.example.com.".into(),
+        ));
     }
     if value == "goldetech.com" || !value.contains('.') {
-        return Err(AppError::Validation("Use a subdomain such as chat.example.com. Apex domains require a different DNS setup.".into()));
+        return Err(AppError::Validation(
+            "Use a subdomain such as chat.example.com. Apex domains require a different DNS setup."
+                .into(),
+        ));
     }
-    if !value.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '.') {
-        return Err(AppError::Validation("Hostname contains unsupported characters.".into()));
+    if !value
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '.')
+    {
+        return Err(AppError::Validation(
+            "Hostname contains unsupported characters.".into(),
+        ));
     }
     Ok(value)
 }
@@ -227,36 +248,48 @@ fn domain_payload(domain: CustomDomain, agent_name: &str) -> serde_json::Value {
 }
 
 pub async fn landing(Extension(state): Extension<AppState>, Host(host): Host) -> Response {
-    let hostname = host.split(':').next().unwrap_or(host.as_str()).to_ascii_lowercase();
+    let hostname = host
+        .split(':')
+        .next()
+        .unwrap_or(host.as_str())
+        .to_ascii_lowercase();
 
     let domain = match sqlx::query_as::<_, CustomDomain>(
         "SELECT * FROM ai_agent_custom_domains
          WHERE hostname=$1 AND status='DNS_CONNECTED'
-         LIMIT 1"
+         LIMIT 1",
     )
     .bind(&hostname)
     .fetch_optional(&state.pool)
-    .await {
+    .await
+    {
         Ok(Some(row)) => row,
-        _ => return (
-            StatusCode::NOT_FOUND,
-            [(header::CONTENT_TYPE, "text/plain; charset=utf-8")],
-            "GOLD-e custom domain is not connected.",
-        ).into_response()
+        _ => {
+            return (
+                StatusCode::NOT_FOUND,
+                [(header::CONTENT_TYPE, "text/plain; charset=utf-8")],
+                "GOLD-e custom domain is not connected.",
+            )
+                .into_response()
+        }
     };
 
     let agent = match sqlx::query_as::<_, crate::models::AiAgent>(
-        "SELECT * FROM ai_agents WHERE id=$1 AND status='ACTIVE'"
+        "SELECT * FROM ai_agents WHERE id=$1 AND status='ACTIVE'",
     )
     .bind(domain.agent_id)
     .fetch_optional(&state.pool)
-    .await {
+    .await
+    {
         Ok(Some(agent)) => agent,
-        _ => return (
-            StatusCode::NOT_FOUND,
-            [(header::CONTENT_TYPE, "text/plain; charset=utf-8")],
-            "GOLD-e AI agent is not active.",
-        ).into_response()
+        _ => {
+            return (
+                StatusCode::NOT_FOUND,
+                [(header::CONTENT_TYPE, "text/plain; charset=utf-8")],
+                "GOLD-e AI agent is not active.",
+            )
+                .into_response()
+        }
     };
 
     let key = match agent.public_key {
@@ -264,7 +297,8 @@ pub async fn landing(Extension(state): Extension<AppState>, Host(host): Host) ->
         None => return StatusCode::NOT_FOUND.into_response(),
     };
 
-    let html = format!(r#"<!doctype html>
+    let html = format!(
+        r#"<!doctype html>
 <html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{}</title>
@@ -278,8 +312,16 @@ html,body{{margin:0;height:100%;background:#faf8fd;font-family:Inter,system-ui,s
 <p>This GOLD-e customer assistant is ready. Open the chat button to start a conversation.</p>
 </div></div></div>
 <script src="https://api.goldetech.com/api/public/agents/{}/widget.js" defer></script>
-</body></html>"#, agent.name, agent.name, key);
+</body></html>"#,
+        agent.name, agent.name, key
+    );
 
-    ([(header::CONTENT_TYPE, "text/html; charset=utf-8"),
-      (header::CACHE_CONTROL, "no-store")], html).into_response()
+    (
+        [
+            (header::CONTENT_TYPE, "text/html; charset=utf-8"),
+            (header::CACHE_CONTROL, "no-store"),
+        ],
+        html,
+    )
+        .into_response()
 }

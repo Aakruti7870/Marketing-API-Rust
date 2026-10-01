@@ -65,4 +65,6 @@ pub struct AutomationRunResponse {
     pub status: String,
 }
 
-fn default_true() -> bool { true }
+fn default_true() -> bool {
+    true
+}

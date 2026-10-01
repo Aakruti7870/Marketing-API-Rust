@@ -23,7 +23,10 @@ pub fn routes(state: AppState) -> Router {
         .route("/button-actions/:asset_id", get(list_button_actions))
         .route("/button-actions", post(save_button_action))
         .route("/share-whatsapp", post(share_whatsapp))
-        .route("/channels/:channel_id/import-contacts", post(import_contacts))
+        .route(
+            "/channels/:channel_id/import-contacts",
+            post(import_contacts),
+        )
         .with_state(state)
 }
 
@@ -70,7 +73,8 @@ async fn generate(
             &dto.kind,
             &dto.prompt,
             dto.business_context.as_deref().unwrap_or(""),
-        ).await?,
+        )
+        .await?,
         "Playground content generated",
     ))
 }
@@ -90,11 +94,11 @@ async fn generate_image(
             &dto.kind,
             &dto.prompt,
             dto.title.as_deref().unwrap_or("GOLD-e Playground image"),
-        ).await?,
+        )
+        .await?,
         "Playground image generated",
     ))
 }
-
 
 async fn list_button_actions(
     State(state): State<AppState>,
@@ -154,7 +158,8 @@ async fn share_whatsapp(
             dto.group_id,
             dto.asset_id,
             dto.caption.as_deref(),
-        ).await?,
+        )
+        .await?,
         "WhatsApp distribution completed",
     ))
 }
@@ -167,7 +172,14 @@ async fn import_contacts(
 ) -> Result<impl IntoResponse, AppError> {
     require_workspace_roles(&tenant.workspace_role, &["OWNER", "ADMIN"])?;
     Ok(json_success(
-        playground_service::import_contacts(&state.pool, tenant.workspace_id, tenant.user_id, channel_id, multipart).await?,
+        playground_service::import_contacts(
+            &state.pool,
+            tenant.workspace_id,
+            tenant.user_id,
+            channel_id,
+            multipart,
+        )
+        .await?,
         "Contacts imported and grouped",
     ))
 }
@@ -177,14 +189,16 @@ async fn public_asset(
     Path(public_key): Path<String>,
 ) -> Result<Response<Body>, AppError> {
     let row = sqlx::query_as::<_, (Option<Vec<u8>>, Option<String>)>(
-        "SELECT media_data, mime_type FROM playground_assets WHERE public_key=$1"
+        "SELECT media_data, mime_type FROM playground_assets WHERE public_key=$1",
     )
     .bind(&public_key)
     .fetch_optional(&state.pool)
     .await?
     .ok_or_else(|| AppError::NotFound("Playground asset not found".into()))?;
 
-    let data = row.0.ok_or_else(|| AppError::NotFound("This playground asset has no media payload".into()))?;
+    let data = row
+        .0
+        .ok_or_else(|| AppError::NotFound("This playground asset has no media payload".into()))?;
     let mime = row.1.unwrap_or_else(|| "application/octet-stream".into());
     let response = Response::builder()
         .status(StatusCode::OK)

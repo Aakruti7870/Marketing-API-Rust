@@ -2,8 +2,14 @@ use crate::error::AppError;
 use crate::models::PublicAgentChatDto;
 use crate::services::agent_service;
 use crate::state::AppState;
-use axum::{extract::{Path, State}, http::header, response::{IntoResponse, Response}, routing::{get, post}, Json, Router};
 use crate::utils::response::json_success;
+use axum::{
+    extract::{Path, State},
+    http::header,
+    response::{IntoResponse, Response},
+    routing::{get, post},
+    Json, Router,
+};
 
 pub fn routes(state: AppState) -> Router {
     Router::new()
@@ -29,10 +35,10 @@ async fn chat(
     ))
 }
 
-
 async fn widget(Path(public_key): Path<String>) -> Response {
-    let key=public_key.replace(['\\', '"'], "");
-    let script=format!(r#"
+    let key = public_key.replace(['\\', '"'], "");
+    let script = format!(
+        r#"
 (() => {{
   const KEY = "{key}";
   const API = "https://api.goldetech.com/api/public/agents/" + KEY + "/chat";
@@ -64,6 +70,17 @@ async fn widget(Path(public_key): Path<String>) -> Response {
   bubble.onclick=()=>{{panel.classList.toggle("open");if(panel.classList.contains("open"))input.focus()}};
   send.onclick=ask;input.onkeydown=e=>{{if(e.key==="Enter")ask()}};
 }})();
-"#);
-    ([(header::CONTENT_TYPE,"application/javascript; charset=utf-8"),(header::CACHE_CONTROL,"public, max-age=300")],script).into_response()
+"#
+    );
+    (
+        [
+            (
+                header::CONTENT_TYPE,
+                "application/javascript; charset=utf-8",
+            ),
+            (header::CACHE_CONTROL, "public, max-age=300"),
+        ],
+        script,
+    )
+        .into_response()
 }

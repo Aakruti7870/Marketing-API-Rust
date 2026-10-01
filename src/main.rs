@@ -8,13 +8,19 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 1. Initialize Tracing Subscriber
     tracing_subscriber::registry()
-        .with(tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info,golde_marketing_api=debug,tower_http=info".into()))
+        .with(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| "info,golde_marketing_api=debug,tower_http=info".into()),
+        )
         .with(tracing_subscriber::fmt::layer())
         .init();
 
     // 2. Load Configuration
     let config = Config::from_env().map_err(|e| format!("Configuration Error: {}", e))?;
-    info!("🚀 Booting GOLD-e GrowthOS Marketing API [{}]", config.environment);
+    info!(
+        "🚀 Booting GOLD-e GrowthOS Marketing API [{}]",
+        config.environment
+    );
 
     // 3. Connect Database Pool
     info!(" Connecting to PostgreSQL via SQLx...");
@@ -41,7 +47,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let mut interval = tokio::time::interval(std::time::Duration::from_secs(10));
         loop {
             interval.tick().await;
-            if let Err(e) = golde_marketing_api::services::automation_service::scheduler_tick(&scheduler_state).await {
+            if let Err(e) =
+                golde_marketing_api::services::automation_service::scheduler_tick(&scheduler_state)
+                    .await
+            {
                 tracing::error!("Automation scheduler tick failed: {}", e);
             }
         }
@@ -50,9 +59,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 5. Start HTTP Server
     let addr: SocketAddr = format!("{}:{}", config.host, config.port).parse()?;
     info!(" Listening on http://{}", addr);
-    info!(" Command Center Dashboard endpoint: http://{}/api/v1/analytics/dashboard", addr);
+    info!(
+        " Command Center Dashboard endpoint: http://{}/api/v1/analytics/dashboard",
+        addr
+    );
     info!(" Agent Runs endpoint: http://{}/api/v1/agents/runs", addr);
-    info!(" WhatsApp Webhook endpoint: http://{}/api/v1/webhooks/whatsapp", addr);
+    info!(
+        " WhatsApp Webhook endpoint: http://{}/api/v1/webhooks/whatsapp",
+        addr
+    );
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
     axum::serve(listener, router)

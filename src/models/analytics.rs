@@ -1,6 +1,6 @@
+use super::agent::AgentRunWithSteps;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-use super::agent::AgentRunWithSteps;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct DashboardSummary {

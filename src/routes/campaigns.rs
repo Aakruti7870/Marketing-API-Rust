@@ -27,7 +27,8 @@ async fn list_campaigns(
     tenant: TenantContext,
     Query(query): Query<PaginationQuery>,
 ) -> Result<impl IntoResponse, AppError> {
-    let (campaigns, meta) = campaign_service::list_campaigns(&state.pool, tenant.workspace_id, query).await?;
+    let (campaigns, meta) =
+        campaign_service::list_campaigns(&state.pool, tenant.workspace_id, query).await?;
     Ok(json_paginated(campaigns, meta, "Campaigns retrieved"))
 }
 
@@ -37,7 +38,9 @@ async fn create_campaign(
     Json(dto): Json<CreateCampaignDto>,
 ) -> Result<impl IntoResponse, AppError> {
     require_workspace_roles(&tenant.workspace_role, &["OWNER", "ADMIN", "MEMBER"])?;
-    let campaign = campaign_service::create_campaign(&state.pool, tenant.workspace_id, tenant.user_id, dto).await?;
+    let campaign =
+        campaign_service::create_campaign(&state.pool, tenant.workspace_id, tenant.user_id, dto)
+            .await?;
     Ok(json_success(campaign, "Campaign created"))
 }
 
@@ -46,7 +49,8 @@ async fn get_campaign(
     tenant: TenantContext,
     Path(campaign_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
-    let campaign = campaign_service::get_campaign(&state.pool, tenant.workspace_id, campaign_id).await?;
+    let campaign =
+        campaign_service::get_campaign(&state.pool, tenant.workspace_id, campaign_id).await?;
     Ok(json_success(campaign, "Campaign retrieved"))
 }
 
@@ -57,7 +61,9 @@ async fn update_campaign(
     Json(dto): Json<UpdateCampaignDto>,
 ) -> Result<impl IntoResponse, AppError> {
     require_workspace_roles(&tenant.workspace_role, &["OWNER", "ADMIN"])?;
-    let campaign = campaign_service::update_campaign(&state.pool, tenant.workspace_id, campaign_id, dto).await?;
+    let campaign =
+        campaign_service::update_campaign(&state.pool, tenant.workspace_id, campaign_id, dto)
+            .await?;
     Ok(json_success(campaign, "Campaign updated"))
 }
 
@@ -84,6 +90,7 @@ async fn pause_campaign(
     Path(campaign_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
     require_workspace_roles(&tenant.workspace_role, &["OWNER", "ADMIN"])?;
-    let campaign = campaign_service::pause_campaign(&state.pool, tenant.workspace_id, campaign_id).await?;
+    let campaign =
+        campaign_service::pause_campaign(&state.pool, tenant.workspace_id, campaign_id).await?;
     Ok(json_success(campaign, "Campaign paused"))
 }

@@ -1,17 +1,21 @@
 use crate::config::Config;
 use crate::error::AppError;
 use crate::models::{
-    AgentRun, AgentRunWithSteps, AgentStep, AiAgent, AiAgentChatDto, AiAgentChatResponse, AiAgentChannelConnection, ChannelConnectionResponse, CreateChannelConnectionDto, PublicAgentChatDto, PublicAgentChatResponse,
-    AiAgentConversation, AiAgentMessage, CreateAgentRunDto, CreateAiAgentDto, StepApprovalDto,
-    StepRejectionDto, UpdateAiAgentDto,
+    AgentRun, AgentRunWithSteps, AgentStep, AiAgent, AiAgentChannelConnection, AiAgentChatDto,
+    AiAgentChatResponse, AiAgentConversation, AiAgentMessage, ChannelConnectionResponse,
+    CreateAgentRunDto, CreateAiAgentDto, CreateChannelConnectionDto, PublicAgentChatDto,
+    PublicAgentChatResponse, StepApprovalDto, StepRejectionDto, UpdateAiAgentDto,
 };
 use crate::utils::pagination::{PaginationMeta, PaginationQuery};
-use reqwest::Client;
-use aes_gcm::{aead::{Aead, KeyInit}, Aes256Gcm, Nonce};
+use aes_gcm::{
+    aead::{Aead, KeyInit},
+    Aes256Gcm, Nonce,
+};
 use base64::{engine::general_purpose::STANDARD as B64, Engine as _};
-use sha2::{Digest, Sha256};
+use reqwest::Client;
 use serde::Serialize;
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -139,7 +143,7 @@ fn template(
 
 pub async fn list_agents(pool: &PgPool, workspace_id: Uuid) -> Result<Vec<AiAgent>, AppError> {
     Ok(sqlx::query_as::<_, AiAgent>(
-        "SELECT * FROM ai_agents WHERE workspace_id=$1 ORDER BY created_at DESC"
+        "SELECT * FROM ai_agents WHERE workspace_id=$1 ORDER BY created_at DESC",
     )
     .bind(workspace_id)
     .fetch_all(pool)
@@ -147,14 +151,12 @@ pub async fn list_agents(pool: &PgPool, workspace_id: Uuid) -> Result<Vec<AiAgen
 }
 
 pub async fn get_agent(pool: &PgPool, workspace_id: Uuid, id: Uuid) -> Result<AiAgent, AppError> {
-    sqlx::query_as::<_, AiAgent>(
-        "SELECT * FROM ai_agents WHERE id=$1 AND workspace_id=$2"
-    )
-    .bind(id)
-    .bind(workspace_id)
-    .fetch_optional(pool)
-    .await?
-    .ok_or_else(|| AppError::NotFound("AI agent not found".into()))
+    sqlx::query_as::<_, AiAgent>("SELECT * FROM ai_agents WHERE id=$1 AND workspace_id=$2")
+        .bind(id)
+        .bind(workspace_id)
+        .fetch_optional(pool)
+        .await?
+        .ok_or_else(|| AppError::NotFound("AI agent not found".into()))
 }
 
 pub async fn create_agent(
@@ -172,8 +174,12 @@ pub async fn create_agent(
     let public_key = Uuid::new_v4().to_string().replace("-", "");
     let industry = dto.industry.unwrap_or_else(|| tpl.industry.to_string());
     let role = dto.role.unwrap_or_else(|| tpl.role.to_string());
-    let description = dto.description.or_else(|| Some(tpl.description.to_string()));
-    let system_prompt = dto.system_prompt.unwrap_or_else(|| tpl.system_prompt.to_string());
+    let description = dto
+        .description
+        .or_else(|| Some(tpl.description.to_string()));
+    let system_prompt = dto
+        .system_prompt
+        .unwrap_or_else(|| tpl.system_prompt.to_string());
     let capabilities = dto.capabilities.unwrap_or(tpl.capabilities);
     let tools = dto.tools.unwrap_or(tpl.tools);
     let channels = dto.channels.unwrap_or(tpl.channels);
@@ -214,7 +220,9 @@ pub async fn update_agent(
     let current = get_agent(pool, workspace_id, id).await?;
     let status = dto.status.unwrap_or(current.status);
     if !matches!(status.as_str(), "DRAFT" | "ACTIVE" | "PAUSED") {
-        return Err(AppError::Validation("Agent status must be DRAFT, ACTIVE or PAUSED".into()));
+        return Err(AppError::Validation(
+            "Agent status must be DRAFT, ACTIVE or PAUSED".into(),
+        ));
     }
 
     sqlx::query_as::<_, AiAgent>(
@@ -231,7 +239,7 @@ pub async fn update_agent(
          settings=COALESCE($12,settings),
          updated_at=NOW()
          WHERE id=$1 AND workspace_id=$2
-         RETURNING *"
+         RETURNING *",
     )
     .bind(id)
     .bind(workspace_id)
@@ -252,7 +260,10 @@ pub async fn update_agent(
 
 pub async fn delete_agent(pool: &PgPool, workspace_id: Uuid, id: Uuid) -> Result<(), AppError> {
     let result = sqlx::query("DELETE FROM ai_agents WHERE id=$1 AND workspace_id=$2")
-        .bind(id).bind(workspace_id).execute(pool).await?;
+        .bind(id)
+        .bind(workspace_id)
+        .execute(pool)
+        .await?;
     if result.rows_affected() == 0 {
         return Err(AppError::NotFound("AI agent not found".into()));
     }
@@ -268,40 +279,51 @@ pub async fn chat(
 ) -> Result<AiAgentChatResponse, AppError> {
     let agent = get_agent(pool, workspace_id, agent_id).await?;
     if agent.status != "ACTIVE" {
-        return Err(AppError::BadRequest("AI agent must be ACTIVE before chat can be used".into()));
+        return Err(AppError::BadRequest(
+            "AI agent must be ACTIVE before chat can be used".into(),
+        ));
     }
     if dto.message.trim().is_empty() {
         return Err(AppError::Validation("message is required".into()));
     }
 
-    let conversation_id = if let Some(id) = dto.conversation_id {
-        let exists = sqlx::query_as::<_, AiAgentConversation>(
+    let conversation_id =
+        if let Some(id) = dto.conversation_id {
+            let exists = sqlx::query_as::<_, AiAgentConversation>(
             "SELECT * FROM ai_agent_conversations WHERE id=$1 AND workspace_id=$2 AND agent_id=$3"
         ).bind(id).bind(workspace_id).bind(agent_id).fetch_optional(pool).await?;
-        exists.ok_or_else(|| AppError::NotFound("Conversation not found".into()))?.id
-    } else {
-        sqlx::query_scalar::<_, Uuid>(
-            "INSERT INTO ai_agent_conversations
+            exists
+                .ok_or_else(|| AppError::NotFound("Conversation not found".into()))?
+                .id
+        } else {
+            sqlx::query_scalar::<_, Uuid>(
+                "INSERT INTO ai_agent_conversations
              (workspace_id,agent_id,channel,external_user_id)
-             VALUES ($1,$2,$3,$4) RETURNING id"
-        )
-        .bind(workspace_id).bind(agent_id)
-        .bind(dto.channel.unwrap_or_else(|| "WEB_CHAT".into()))
-        .bind(dto.external_user_id)
-        .fetch_one(pool).await?
-    };
+             VALUES ($1,$2,$3,$4) RETURNING id",
+            )
+            .bind(workspace_id)
+            .bind(agent_id)
+            .bind(dto.channel.unwrap_or_else(|| "WEB_CHAT".into()))
+            .bind(dto.external_user_id)
+            .fetch_one(pool)
+            .await?
+        };
 
     sqlx::query(
-        "INSERT INTO ai_agent_messages (conversation_id,role,content) VALUES ($1,'user',$2)"
-    ).bind(conversation_id).bind(&dto.message).execute(pool).await?;
+        "INSERT INTO ai_agent_messages (conversation_id,role,content) VALUES ($1,'user',$2)",
+    )
+    .bind(conversation_id)
+    .bind(&dto.message)
+    .execute(pool)
+    .await?;
 
     let history = sqlx::query_as::<_, AiAgentMessage>(
         "SELECT * FROM ai_agent_messages WHERE conversation_id=$1 ORDER BY created_at DESC LIMIT 20"
     ).bind(conversation_id).fetch_all(pool).await?;
 
-    let api_key = config.ai_api_key.clone().ok_or_else(|| AppError::BadRequest(
-        "AI provider is not configured. Set AI_API_KEY on the backend.".into()
-    ))?;
+    let api_key = config.ai_api_key.clone().ok_or_else(|| {
+        AppError::BadRequest("AI provider is not configured. Set AI_API_KEY on the backend.".into())
+    })?;
     let base_url = config.ai_api_base_url.trim_end_matches('/');
     let model = config.ai_model.clone();
 
@@ -317,10 +339,13 @@ pub async fn chat(
 
     let messages: Vec<Value> = input.to_vec();
     let mut messages = messages;
-    messages.insert(0, json!({
-        "role": "system",
-        "content": agent.system_prompt
-    }));
+    messages.insert(
+        0,
+        json!({
+            "role": "system",
+            "content": agent.system_prompt
+        }),
+    );
 
     let body = json!({
         "model": model,
@@ -336,10 +361,18 @@ pub async fn chat(
         .map_err(|e| AppError::ExternalService(format!("AI provider request failed: {}", e)))?;
 
     let status = response.status();
-    let content_type = response.headers().get(reqwest::header::CONTENT_TYPE)
-        .and_then(|v| v.to_str().ok()).unwrap_or("").to_string();
-    let raw_body = response.text().await
-        .map_err(|e| AppError::ExternalService(format!("Failed reading AI provider response (HTTP {}): {}", status, e)))?;
+    let content_type = response
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("")
+        .to_string();
+    let raw_body = response.text().await.map_err(|e| {
+        AppError::ExternalService(format!(
+            "Failed reading AI provider response (HTTP {}): {}",
+            status, e
+        ))
+    })?;
 
     let payload: Value = serde_json::from_str(&raw_body).map_err(|e| {
         let preview: String = raw_body.chars().take(1000).collect();
@@ -350,18 +383,30 @@ pub async fn chat(
     })?;
 
     if !status.is_success() {
-        let message = payload.get("error").and_then(|e| e.get("message")).and_then(Value::as_str)
+        let message = payload
+            .get("error")
+            .and_then(|e| e.get("message"))
+            .and_then(Value::as_str)
             .or_else(|| payload.get("message").and_then(Value::as_str))
             .unwrap_or("AI provider returned an error");
         let preview: String = raw_body.chars().take(2000).collect();
         tracing::error!(
             "AI provider request failed: HTTP {} model={} base_url={} message={} body={}",
-            status, model, base_url, message, preview
+            status,
+            model,
+            base_url,
+            message,
+            preview
         );
-        return Err(AppError::ExternalService(format!("HTTP {}: {}", status, message)));
+        return Err(AppError::ExternalService(format!(
+            "HTTP {}: {}",
+            status, message
+        )));
     }
 
-    let reply = payload.get("choices").and_then(Value::as_array)
+    let reply = payload
+        .get("choices")
+        .and_then(Value::as_array)
         .and_then(|choices| choices.first())
         .and_then(|choice| choice.get("message"))
         .and_then(|message| message.get("content"))
@@ -370,10 +415,16 @@ pub async fn chat(
         .ok_or_else(|| AppError::ExternalService("AI provider returned no text output".into()))?;
 
     sqlx::query(
-        "INSERT INTO ai_agent_messages (conversation_id,role,content) VALUES ($1,'assistant',$2)"
-    ).bind(conversation_id).bind(&reply).execute(pool).await?;
+        "INSERT INTO ai_agent_messages (conversation_id,role,content) VALUES ($1,'assistant',$2)",
+    )
+    .bind(conversation_id)
+    .bind(&reply)
+    .execute(pool)
+    .await?;
     sqlx::query("UPDATE ai_agent_conversations SET updated_at=NOW() WHERE id=$1")
-        .bind(conversation_id).execute(pool).await?;
+        .bind(conversation_id)
+        .execute(pool)
+        .await?;
 
     Ok(AiAgentChatResponse {
         conversation_id,
@@ -400,7 +451,7 @@ pub async fn list_runs(
          WHERE workspace_id = $1
            AND ($2::text IS NULL OR status = $2)
          ORDER BY created_at DESC
-         LIMIT $3 OFFSET $4"
+         LIMIT $3 OFFSET $4",
     )
     .bind(workspace_id)
     .bind(&status)
@@ -425,7 +476,7 @@ pub async fn list_runs(
     let mut result = Vec::new();
     for run in runs {
         let steps = sqlx::query_as::<_, AgentStep>(
-            "SELECT * FROM agent_steps WHERE run_id = $1 ORDER BY step_number ASC"
+            "SELECT * FROM agent_steps WHERE run_id = $1 ORDER BY step_number ASC",
         )
         .bind(run.id)
         .fetch_all(pool)
@@ -437,16 +488,34 @@ pub async fn list_runs(
     Ok((result, meta))
 }
 
-pub async fn get_run(pool: &PgPool, workspace_id: Uuid, run_id: Uuid) -> Result<AgentRunWithSteps, AppError> {
-    let run = sqlx::query_as::<_, AgentRun>("SELECT * FROM agent_runs WHERE id = $1 AND workspace_id = $2")
-        .bind(run_id).bind(workspace_id).fetch_optional(pool).await?
-        .ok_or_else(|| AppError::NotFound("Agent run not found".to_string()))?;
-    let steps = sqlx::query_as::<_, AgentStep>("SELECT * FROM agent_steps WHERE run_id = $1 ORDER BY step_number ASC")
-        .bind(run.id).fetch_all(pool).await?;
+pub async fn get_run(
+    pool: &PgPool,
+    workspace_id: Uuid,
+    run_id: Uuid,
+) -> Result<AgentRunWithSteps, AppError> {
+    let run = sqlx::query_as::<_, AgentRun>(
+        "SELECT * FROM agent_runs WHERE id = $1 AND workspace_id = $2",
+    )
+    .bind(run_id)
+    .bind(workspace_id)
+    .fetch_optional(pool)
+    .await?
+    .ok_or_else(|| AppError::NotFound("Agent run not found".to_string()))?;
+    let steps = sqlx::query_as::<_, AgentStep>(
+        "SELECT * FROM agent_steps WHERE run_id = $1 ORDER BY step_number ASC",
+    )
+    .bind(run.id)
+    .fetch_all(pool)
+    .await?;
     Ok(AgentRunWithSteps { run, steps })
 }
 
-pub async fn create_run(pool: &PgPool, workspace_id: Uuid, user_id: Uuid, dto: CreateAgentRunDto) -> Result<AgentRunWithSteps, AppError> {
+pub async fn create_run(
+    pool: &PgPool,
+    workspace_id: Uuid,
+    user_id: Uuid,
+    dto: CreateAgentRunDto,
+) -> Result<AgentRunWithSteps, AppError> {
     let run_id = Uuid::new_v4();
     let input_params = dto.input_params.unwrap_or_else(|| json!({}));
     let mut tx = pool.begin().await?;
@@ -473,15 +542,33 @@ pub async fn create_run(pool: &PgPool, workspace_id: Uuid, user_id: Uuid, dto: C
     get_run(pool, workspace_id, run_id).await
 }
 
-pub async fn approve_step(pool: &PgPool, workspace_id: Uuid, user_id: Uuid, run_id: Uuid, step_id: Uuid, _dto: StepApprovalDto) -> Result<AgentRunWithSteps, AppError> {
-    let _run = sqlx::query_as::<_, AgentRun>("SELECT * FROM agent_runs WHERE id=$1 AND workspace_id=$2")
-        .bind(run_id).bind(workspace_id).fetch_optional(pool).await?
-        .ok_or_else(|| AppError::NotFound("Agent run not found in workspace".to_string()))?;
-    let step = sqlx::query_as::<_, AgentStep>("SELECT * FROM agent_steps WHERE id=$1 AND run_id=$2")
-        .bind(step_id).bind(run_id).fetch_optional(pool).await?
-        .ok_or_else(|| AppError::NotFound("Agent step not found".to_string()))?;
+pub async fn approve_step(
+    pool: &PgPool,
+    workspace_id: Uuid,
+    user_id: Uuid,
+    run_id: Uuid,
+    step_id: Uuid,
+    _dto: StepApprovalDto,
+) -> Result<AgentRunWithSteps, AppError> {
+    let _run =
+        sqlx::query_as::<_, AgentRun>("SELECT * FROM agent_runs WHERE id=$1 AND workspace_id=$2")
+            .bind(run_id)
+            .bind(workspace_id)
+            .fetch_optional(pool)
+            .await?
+            .ok_or_else(|| AppError::NotFound("Agent run not found in workspace".to_string()))?;
+    let step =
+        sqlx::query_as::<_, AgentStep>("SELECT * FROM agent_steps WHERE id=$1 AND run_id=$2")
+            .bind(step_id)
+            .bind(run_id)
+            .fetch_optional(pool)
+            .await?
+            .ok_or_else(|| AppError::NotFound("Agent step not found".to_string()))?;
     if step.status != "WAITING_APPROVAL" {
-        return Err(AppError::BadRequest(format!("Step is not waiting for approval (Current status: {})", step.status)));
+        return Err(AppError::BadRequest(format!(
+            "Step is not waiting for approval (Current status: {})",
+            step.status
+        )));
     }
     let mut tx = pool.begin().await?;
     sqlx::query!(
@@ -492,31 +579,51 @@ pub async fn approve_step(pool: &PgPool, workspace_id: Uuid, user_id: Uuid, run_
         "UPDATE agent_steps SET status='COMPLETED',started_at=NOW(),completed_at=NOW(),updated_at=NOW() WHERE run_id=$1 AND status='PENDING'",
         run_id
     ).execute(&mut *tx).await?;
-    sqlx::query!("UPDATE agent_runs SET status='COMPLETED',completed_at=NOW(),updated_at=NOW() WHERE id=$1",run_id)
-        .execute(&mut *tx).await?;
+    sqlx::query!(
+        "UPDATE agent_runs SET status='COMPLETED',completed_at=NOW(),updated_at=NOW() WHERE id=$1",
+        run_id
+    )
+    .execute(&mut *tx)
+    .await?;
     tx.commit().await?;
     get_run(pool, workspace_id, run_id).await
 }
 
-pub async fn reject_step(pool: &PgPool, workspace_id: Uuid, _user_id: Uuid, run_id: Uuid, step_id: Uuid, dto: StepRejectionDto) -> Result<AgentRunWithSteps, AppError> {
-    let _run = sqlx::query_as::<_, AgentRun>("SELECT * FROM agent_runs WHERE id=$1 AND workspace_id=$2")
-        .bind(run_id).bind(workspace_id).fetch_optional(pool).await?
-        .ok_or_else(|| AppError::NotFound("Agent run not found".to_string()))?;
+pub async fn reject_step(
+    pool: &PgPool,
+    workspace_id: Uuid,
+    _user_id: Uuid,
+    run_id: Uuid,
+    step_id: Uuid,
+    dto: StepRejectionDto,
+) -> Result<AgentRunWithSteps, AppError> {
+    let _run =
+        sqlx::query_as::<_, AgentRun>("SELECT * FROM agent_runs WHERE id=$1 AND workspace_id=$2")
+            .bind(run_id)
+            .bind(workspace_id)
+            .fetch_optional(pool)
+            .await?
+            .ok_or_else(|| AppError::NotFound("Agent run not found".to_string()))?;
     let mut tx = pool.begin().await?;
     sqlx::query!(
         "UPDATE agent_steps SET status='REJECTED',rejection_reason=$3,completed_at=NOW(),updated_at=NOW() WHERE id=$1 AND run_id=$2",
         step_id,run_id,dto.reason
     ).execute(&mut *tx).await?;
-    sqlx::query!("UPDATE agent_runs SET status='CANCELLED',completed_at=NOW(),updated_at=NOW() WHERE id=$1",run_id)
-        .execute(&mut *tx).await?;
+    sqlx::query!(
+        "UPDATE agent_runs SET status='CANCELLED',completed_at=NOW(),updated_at=NOW() WHERE id=$1",
+        run_id
+    )
+    .execute(&mut *tx)
+    .await?;
     tx.commit().await?;
     get_run(pool, workspace_id, run_id).await
 }
 
-
 fn channel_key(config: &Config) -> Result<[u8; 32], AppError> {
     let master = config.channel_encryption_key.as_deref().ok_or_else(|| {
-        AppError::BadRequest("CHANNEL_ENCRYPTION_KEY must be configured before connecting customer channels.".into())
+        AppError::BadRequest(
+            "CHANNEL_ENCRYPTION_KEY must be configured before connecting customer channels.".into(),
+        )
     })?;
     let digest = Sha256::digest(master.as_bytes());
     let mut key = [0u8; 32];
@@ -526,11 +633,13 @@ fn channel_key(config: &Config) -> Result<[u8; 32], AppError> {
 
 fn encrypt_channel_secret(config: &Config, secret: &str) -> Result<String, AppError> {
     let key = channel_key(config)?;
-    let cipher = Aes256Gcm::new_from_slice(&key).map_err(|_| AppError::BadRequest("Invalid channel encryption key".into()))?;
+    let cipher = Aes256Gcm::new_from_slice(&key)
+        .map_err(|_| AppError::BadRequest("Invalid channel encryption key".into()))?;
     let nonce_uuid = Uuid::new_v4();
     let nonce_bytes = &nonce_uuid.as_bytes()[..12];
     let nonce = Nonce::from_slice(nonce_bytes);
-    let ciphertext = cipher.encrypt(nonce, secret.as_bytes())
+    let ciphertext = cipher
+        .encrypt(nonce, secret.as_bytes())
         .map_err(|_| AppError::ExternalService("Unable to encrypt channel credential".into()))?;
     let mut packed = nonce_bytes.to_vec();
     packed.extend_from_slice(&ciphertext);
@@ -539,36 +648,81 @@ fn encrypt_channel_secret(config: &Config, secret: &str) -> Result<String, AppEr
 
 fn decrypt_channel_secret(config: &Config, value: &str) -> Result<String, AppError> {
     let key = channel_key(config)?;
-    let packed = B64.decode(value).map_err(|_| AppError::ExternalService("Invalid stored channel credential".into()))?;
-    if packed.len() < 13 { return Err(AppError::ExternalService("Invalid stored channel credential".into())); }
-    let cipher = Aes256Gcm::new_from_slice(&key).map_err(|_| AppError::BadRequest("Invalid channel encryption key".into()))?;
+    let packed = B64
+        .decode(value)
+        .map_err(|_| AppError::ExternalService("Invalid stored channel credential".into()))?;
+    if packed.len() < 13 {
+        return Err(AppError::ExternalService(
+            "Invalid stored channel credential".into(),
+        ));
+    }
+    let cipher = Aes256Gcm::new_from_slice(&key)
+        .map_err(|_| AppError::BadRequest("Invalid channel encryption key".into()))?;
     let nonce = Nonce::from_slice(&packed[..12]);
-    let plaintext = cipher.decrypt(nonce, &packed[12..])
+    let plaintext = cipher
+        .decrypt(nonce, &packed[12..])
         .map_err(|_| AppError::ExternalService("Unable to decrypt channel credential".into()))?;
-    String::from_utf8(plaintext).map_err(|_| AppError::ExternalService("Invalid channel credential encoding".into()))
+    String::from_utf8(plaintext)
+        .map_err(|_| AppError::ExternalService("Invalid channel credential encoding".into()))
 }
 
-pub async fn list_channel_connections(pool: &PgPool, workspace_id: Uuid, agent_id: Uuid) -> Result<Vec<ChannelConnectionResponse>, AppError> {
+pub async fn list_channel_connections(
+    pool: &PgPool,
+    workspace_id: Uuid,
+    agent_id: Uuid,
+) -> Result<Vec<ChannelConnectionResponse>, AppError> {
     let rows = sqlx::query_as::<_, AiAgentChannelConnection>(
         "SELECT * FROM ai_agent_channel_connections WHERE workspace_id=$1 AND agent_id=$2 ORDER BY created_at DESC"
     ).bind(workspace_id).bind(agent_id).fetch_all(pool).await?;
-    Ok(rows.into_iter().map(|r| ChannelConnectionResponse {
-        id:r.id, agent_id:r.agent_id, channel:r.channel, provider:r.provider,
-        status:r.status, external_account_id:r.external_account_id,
-        external_sender_id:r.external_sender_id, display_name:r.display_name,
-        config:r.config, secret_configured:r.secret_ciphertext.is_some(),
-        created_at:r.created_at, updated_at:r.updated_at
-    }).collect())
+    Ok(rows
+        .into_iter()
+        .map(|r| ChannelConnectionResponse {
+            id: r.id,
+            agent_id: r.agent_id,
+            channel: r.channel,
+            provider: r.provider,
+            status: r.status,
+            external_account_id: r.external_account_id,
+            external_sender_id: r.external_sender_id,
+            display_name: r.display_name,
+            config: r.config,
+            secret_configured: r.secret_ciphertext.is_some(),
+            created_at: r.created_at,
+            updated_at: r.updated_at,
+        })
+        .collect())
 }
 
-pub async fn create_channel_connection(pool: &PgPool, config: &Config, workspace_id: Uuid, agent_id: Uuid, dto: CreateChannelConnectionDto) -> Result<ChannelConnectionResponse, AppError> {
+pub async fn create_channel_connection(
+    pool: &PgPool,
+    config: &Config,
+    workspace_id: Uuid,
+    agent_id: Uuid,
+    dto: CreateChannelConnectionDto,
+) -> Result<ChannelConnectionResponse, AppError> {
     let agent = get_agent(pool, workspace_id, agent_id).await?;
     let channel = dto.channel.trim().to_uppercase();
-    if !matches!(channel.as_str(), "WHATSAPP" | "INSTAGRAM" | "FACEBOOK" | "WEBSITE") {
-        return Err(AppError::Validation("Supported channels: WHATSAPP, INSTAGRAM, FACEBOOK, WEBSITE".into()));
+    if !matches!(
+        channel.as_str(),
+        "WHATSAPP" | "INSTAGRAM" | "FACEBOOK" | "WEBSITE"
+    ) {
+        return Err(AppError::Validation(
+            "Supported channels: WHATSAPP, INSTAGRAM, FACEBOOK, WEBSITE".into(),
+        ));
     }
-    let provider = dto.provider.unwrap_or_else(|| if channel == "WEBSITE" { "GOLD-E".into() } else { "META".into() });
-    let secret_ciphertext = dto.secret.as_deref().filter(|s| !s.trim().is_empty()).map(|s| encrypt_channel_secret(config, s)).transpose()?;
+    let provider = dto.provider.unwrap_or_else(|| {
+        if channel == "WEBSITE" {
+            "GOLD-E".into()
+        } else {
+            "META".into()
+        }
+    });
+    let secret_ciphertext = dto
+        .secret
+        .as_deref()
+        .filter(|s| !s.trim().is_empty())
+        .map(|s| encrypt_channel_secret(config, s))
+        .transpose()?;
     let row=sqlx::query_as::<_,AiAgentChannelConnection>(
         "INSERT INTO ai_agent_channel_connections
         (id,workspace_id,agent_id,channel,provider,status,external_account_id,external_sender_id,display_name,config,secret_ciphertext)
@@ -577,21 +731,37 @@ pub async fn create_channel_connection(pool: &PgPool, config: &Config, workspace
      .bind(dto.external_account_id).bind(dto.external_sender_id).bind(dto.display_name)
      .bind(dto.config.unwrap_or_else(||json!({}))).bind(secret_ciphertext).fetch_one(pool).await?;
     Ok(ChannelConnectionResponse {
-        id:row.id, agent_id:row.agent_id, channel:row.channel, provider:row.provider,
-        status:row.status, external_account_id:row.external_account_id,
-        external_sender_id:row.external_sender_id, display_name:row.display_name,
-        config:row.config, secret_configured:row.secret_ciphertext.is_some(),
-        created_at:row.created_at, updated_at:row.updated_at
+        id: row.id,
+        agent_id: row.agent_id,
+        channel: row.channel,
+        provider: row.provider,
+        status: row.status,
+        external_account_id: row.external_account_id,
+        external_sender_id: row.external_sender_id,
+        display_name: row.display_name,
+        config: row.config,
+        secret_configured: row.secret_ciphertext.is_some(),
+        created_at: row.created_at,
+        updated_at: row.updated_at,
     })
 }
 
-pub async fn delete_channel_connection(pool:&PgPool, workspace_id:Uuid, id:Uuid)->Result<(),AppError>{
-    let result=sqlx::query("DELETE FROM ai_agent_channel_connections WHERE id=$1 AND workspace_id=$2")
-        .bind(id).bind(workspace_id).execute(pool).await?;
-    if result.rows_affected()==0 { return Err(AppError::NotFound("Channel connection not found".into())); }
+pub async fn delete_channel_connection(
+    pool: &PgPool,
+    workspace_id: Uuid,
+    id: Uuid,
+) -> Result<(), AppError> {
+    let result =
+        sqlx::query("DELETE FROM ai_agent_channel_connections WHERE id=$1 AND workspace_id=$2")
+            .bind(id)
+            .bind(workspace_id)
+            .execute(pool)
+            .await?;
+    if result.rows_affected() == 0 {
+        return Err(AppError::NotFound("Channel connection not found".into()));
+    }
     Ok(())
 }
-
 
 // List customer conversations for the business owner console.
 pub async fn list_agent_conversations(
@@ -600,8 +770,9 @@ pub async fn list_agent_conversations(
     agent_id: Uuid,
 ) -> Result<Vec<crate::models::AgentConversationSummary>, AppError> {
     let _agent = get_agent(pool, workspace_id, agent_id).await?;
-    Ok(sqlx::query_as::<_, crate::models::AgentConversationSummary>(
-        "SELECT c.id, c.agent_id, c.channel, c.external_user_id, c.status, c.contact_id,
+    Ok(
+        sqlx::query_as::<_, crate::models::AgentConversationSummary>(
+            "SELECT c.id, c.agent_id, c.channel, c.external_user_id, c.status, c.contact_id,
                 NULLIF(trim(concat_ws(' ', ct.first_name, ct.last_name)), '') AS contact_name,
                 ct.phone AS contact_phone,
                 lm.content AS last_message,
@@ -617,9 +788,13 @@ pub async fn list_agent_conversations(
              LIMIT 1
          ) lm ON TRUE
          WHERE c.workspace_id=$1 AND c.agent_id=$2
-         ORDER BY COALESCE(lm.created_at,c.updated_at) DESC"
+         ORDER BY COALESCE(lm.created_at,c.updated_at) DESC",
+        )
+        .bind(workspace_id)
+        .bind(agent_id)
+        .fetch_all(pool)
+        .await?,
     )
-    .bind(workspace_id).bind(agent_id).fetch_all(pool).await?)
 }
 
 pub async fn get_agent_conversation(
@@ -643,13 +818,19 @@ pub async fn get_agent_conversation(
              ORDER BY created_at DESC
              LIMIT 1
          ) lm ON TRUE
-         WHERE c.id=$1 AND c.workspace_id=$2"
+         WHERE c.id=$1 AND c.workspace_id=$2",
     )
-    .bind(conversation_id).bind(workspace_id).fetch_optional(pool).await?
+    .bind(conversation_id)
+    .bind(workspace_id)
+    .fetch_optional(pool)
+    .await?
     .ok_or_else(|| AppError::NotFound("Customer conversation not found".into()))?;
     let messages = sqlx::query_as::<_, AiAgentMessage>(
-        "SELECT * FROM ai_agent_messages WHERE conversation_id=$1 ORDER BY created_at ASC"
-    ).bind(conversation_id).fetch_all(pool).await?;
+        "SELECT * FROM ai_agent_messages WHERE conversation_id=$1 ORDER BY created_at ASC",
+    )
+    .bind(conversation_id)
+    .fetch_all(pool)
+    .await?;
     Ok((conversation, messages))
 }
 
@@ -661,16 +842,26 @@ pub async fn owner_reply(
     dto: crate::models::OwnerReplyDto,
 ) -> Result<AiAgentMessage, AppError> {
     let text = dto.message.trim();
-    if text.is_empty() { return Err(AppError::Validation("message is required".into())); }
-    if text.len() > 4000 { return Err(AppError::Validation("message is too long".into())); }
+    if text.is_empty() {
+        return Err(AppError::Validation("message is required".into()));
+    }
+    if text.len() > 4000 {
+        return Err(AppError::Validation("message is too long".into()));
+    }
 
     let conversation = sqlx::query_as::<_, AiAgentConversation>(
-        "SELECT * FROM ai_agent_conversations WHERE id=$1 AND workspace_id=$2"
-    ).bind(conversation_id).bind(workspace_id).fetch_optional(pool).await?
-     .ok_or_else(|| AppError::NotFound("Customer conversation not found".into()))?;
+        "SELECT * FROM ai_agent_conversations WHERE id=$1 AND workspace_id=$2",
+    )
+    .bind(conversation_id)
+    .bind(workspace_id)
+    .fetch_optional(pool)
+    .await?
+    .ok_or_else(|| AppError::NotFound("Customer conversation not found".into()))?;
 
     let channel = conversation.channel.to_uppercase();
-    let recipient = conversation.external_user_id.clone()
+    let recipient = conversation
+        .external_user_id
+        .clone()
         .ok_or_else(|| AppError::BadRequest("Customer channel recipient is missing".into()))?;
     if channel == "WEBSITE" {
         return Err(AppError::BadRequest("Website owner replies are not supported by the current widget transport. Use a Meta customer channel or the AI handoff flow.".into()));
@@ -679,15 +870,27 @@ pub async fn owner_reply(
     let connection = sqlx::query_as::<_, AiAgentChannelConnection>(
         "SELECT * FROM ai_agent_channel_connections
          WHERE workspace_id=$1 AND agent_id=$2 AND channel=$3 AND status='ACTIVE'
-           ORDER BY created_at DESC LIMIT 1"
-    ).bind(workspace_id).bind(conversation.agent_id).bind(&channel)
-     .fetch_optional(pool).await?
-     .ok_or_else(|| AppError::NotFound("No active customer-channel connection is configured for this conversation".into()))?;
+           ORDER BY created_at DESC LIMIT 1",
+    )
+    .bind(workspace_id)
+    .bind(conversation.agent_id)
+    .bind(&channel)
+    .fetch_optional(pool)
+    .await?
+    .ok_or_else(|| {
+        AppError::NotFound(
+            "No active customer-channel connection is configured for this conversation".into(),
+        )
+    })?;
 
-    let secret = connection.secret_ciphertext.as_deref()
+    let secret = connection
+        .secret_ciphertext
+        .as_deref()
         .ok_or_else(|| AppError::BadRequest("Channel access token is not configured".into()))?;
     let token = decrypt_channel_secret(config, secret)?;
-    let target_id = connection.external_account_id.as_deref()
+    let target_id = connection
+        .external_account_id
+        .as_deref()
         .ok_or_else(|| AppError::BadRequest("Channel account ID is not configured".into()))?;
 
     let payload = match channel.as_str() {
@@ -698,31 +901,56 @@ pub async fn owner_reply(
         "INSTAGRAM" | "FACEBOOK" => json!({
             "recipient":{"id":recipient},"message":{"text":text}
         }),
-        _ => return Err(AppError::BadRequest("Unsupported owner reply channel".into())),
+        _ => {
+            return Err(AppError::BadRequest(
+                "Unsupported owner reply channel".into(),
+            ))
+        }
     };
 
     let url = format!("https://graph.facebook.com/v20.0/{}/messages", target_id);
-    let response = Client::new().post(url).bearer_auth(token).json(&payload).send().await
+    let response = Client::new()
+        .post(url)
+        .bearer_auth(token)
+        .json(&payload)
+        .send()
+        .await
         .map_err(|e| AppError::ExternalService(format!("Meta owner reply failed: {}", e)))?;
     let status = response.status();
     let body: Value = response.json().await.unwrap_or_else(|_| json!({}));
     if !status.is_success() {
-        let detail = body.get("error").and_then(|e| e.get("message")).and_then(Value::as_str)
+        let detail = body
+            .get("error")
+            .and_then(|e| e.get("message"))
+            .and_then(Value::as_str)
             .unwrap_or("Meta rejected the owner reply");
-        return Err(AppError::ExternalService(format!("HTTP {}: {}", status, detail)));
+        return Err(AppError::ExternalService(format!(
+            "HTTP {}: {}",
+            status, detail
+        )));
     }
 
-    let external_id = body.get("messages").and_then(Value::as_array).and_then(|a| a.first())
-        .and_then(|m| m.get("id")).and_then(Value::as_str).map(str::to_string);
+    let external_id = body
+        .get("messages")
+        .and_then(Value::as_array)
+        .and_then(|a| a.first())
+        .and_then(|m| m.get("id"))
+        .and_then(Value::as_str)
+        .map(str::to_string);
 
     let saved = sqlx::query_as::<_, AiAgentMessage>(
         "INSERT INTO ai_agent_messages (conversation_id,role,content,metadata)
-         VALUES ($1,'assistant',$2,$3) RETURNING *"
-    ).bind(conversation_id).bind(text)
-     .bind(json!({"source":"OWNER","external_message_id":external_id}))
-     .fetch_one(pool).await?;
+         VALUES ($1,'assistant',$2,$3) RETURNING *",
+    )
+    .bind(conversation_id)
+    .bind(text)
+    .bind(json!({"source":"OWNER","external_message_id":external_id}))
+    .fetch_one(pool)
+    .await?;
     sqlx::query("UPDATE ai_agent_conversations SET status='HUMAN',updated_at=NOW() WHERE id=$1")
-        .bind(conversation_id).execute(pool).await?;
+        .bind(conversation_id)
+        .execute(pool)
+        .await?;
     Ok(saved)
 }
 
@@ -737,25 +965,34 @@ pub async fn connect_website_via_cpanel(
 ) -> Result<Value, AppError> {
     let agent = get_agent(pool, workspace_id, agent_id).await?;
     if agent.status != "ACTIVE" {
-        return Err(AppError::BadRequest("Deploy the AI agent before connecting a website.".into()));
+        return Err(AppError::BadRequest(
+            "Deploy the AI agent before connecting a website.".into(),
+        ));
     }
-    let public_key = agent.public_key.clone()
+    let public_key = agent
+        .public_key
+        .clone()
         .ok_or_else(|| AppError::BadRequest("This AI agent has no public widget key.".into()))?;
 
     let website_url = website_url.trim().trim_end_matches('/');
     let parsed = reqwest::Url::parse(website_url)
         .map_err(|_| AppError::Validation("Enter a valid website URL.".into()))?;
     if parsed.scheme() != "https" && parsed.scheme() != "http" {
-        return Err(AppError::Validation("Website URL must use http or https.".into()));
+        return Err(AppError::Validation(
+            "Website URL must use http or https.".into(),
+        ));
     }
 
-    let host = cpanel_host.trim()
+    let host = cpanel_host
+        .trim()
         .trim_end_matches('/')
         .trim_start_matches("https://")
         .trim_start_matches("http://")
         .trim_end_matches('/');
     if host.is_empty() || cpanel_username.trim().is_empty() || cpanel_token.trim().is_empty() {
-        return Err(AppError::Validation("cPanel host, username and API token are required.".into()));
+        return Err(AppError::Validation(
+            "cPanel host, username and API token are required.".into(),
+        ));
     }
 
     let base = format!("https://{}:2083/execute", host);
@@ -777,38 +1014,51 @@ pub async fn connect_website_via_cpanel(
     let read_status = read.status();
     let read_body: Value = read.json().await.unwrap_or_else(|_| json!({}));
     if !read_status.is_success() {
-        return Err(AppError::ExternalService(format!("cPanel returned HTTP {}", read_status)));
+        return Err(AppError::ExternalService(format!(
+            "cPanel returned HTTP {}",
+            read_status
+        )));
     }
     if read_body.get("status").and_then(Value::as_i64) == Some(0) {
-        let reason = read_body.get("errors")
-            .and_then(Value::as_array).and_then(|a| a.first())
-            .and_then(Value::as_str).unwrap_or("cPanel could not read index.html");
+        let reason = read_body
+            .get("errors")
+            .and_then(Value::as_array)
+            .and_then(|a| a.first())
+            .and_then(Value::as_str)
+            .unwrap_or("cPanel could not read index.html");
         return Err(AppError::ExternalService(format!("cPanel: {}", reason)));
     }
 
-    let current = read_body.get("data")
+    let current = read_body
+        .get("data")
         .and_then(|d| d.get("content"))
         .and_then(Value::as_str)
         .or_else(|| read_body.get("data").and_then(Value::as_str))
-        .ok_or_else(|| AppError::ExternalService("cPanel did not return index.html content.".into()))?;
+        .ok_or_else(|| {
+            AppError::ExternalService("cPanel did not return index.html content.".into())
+        })?;
 
     let script = format!(
         r#"<script src="https://api.goldetech.com/api/public/agents/{}/widget.js" defer></script>"#,
         public_key
     );
 
-    if current.contains(&format!("api.goldetech.com/api/public/agents/{}/widget.js", public_key)) {
+    if current.contains(&format!(
+        "api.goldetech.com/api/public/agents/{}/widget.js",
+        public_key
+    )) {
         let _ = sqlx::query(
             "INSERT INTO ai_agent_channel_connections
              (workspace_id,agent_id,channel,provider,status,display_name,config)
              VALUES ($1,$2,'WEBSITE','GOLD-E','ACTIVE',$3,$4)
-             ON CONFLICT DO NOTHING"
+             ON CONFLICT DO NOTHING",
         )
         .bind(workspace_id)
         .bind(agent_id)
         .bind(website_url)
         .bind(json!({"installation":"cpanel","website_url":website_url,"file":"index.html"}))
-        .execute(pool).await;
+        .execute(pool)
+        .await;
         return Ok(json!({
             "installed": true,
             "already_installed": true,
@@ -826,7 +1076,10 @@ pub async fn connect_website_via_cpanel(
         out.push_str(&current[pos..]);
         out
     } else {
-        return Err(AppError::BadRequest("index.html does not contain a </head> tag. Use the manual installer for this site.".into()));
+        return Err(AppError::BadRequest(
+            "index.html does not contain a </head> tag. Use the manual installer for this site."
+                .into(),
+        ));
     };
 
     // Back up the original file before writing the modified index.
@@ -844,7 +1097,9 @@ pub async fn connect_website_via_cpanel(
         .map_err(|e| AppError::ExternalService(format!("cPanel backup failed: {}", e)))?;
     let backup_body: Value = backup.json().await.unwrap_or_else(|_| json!({}));
     if backup_body.get("status").and_then(Value::as_i64) == Some(0) {
-        return Err(AppError::ExternalService("cPanel could not create the website backup.".into()));
+        return Err(AppError::ExternalService(
+            "cPanel could not create the website backup.".into(),
+        ));
     }
 
     let save = client
@@ -861,18 +1116,31 @@ pub async fn connect_website_via_cpanel(
     let save_status = save.status();
     let save_body: Value = save.json().await.unwrap_or_else(|_| json!({}));
     if !save_status.is_success() || save_body.get("status").and_then(Value::as_i64) == Some(0) {
-        return Err(AppError::ExternalService("cPanel could not save index.html.".into()));
+        return Err(AppError::ExternalService(
+            "cPanel could not save index.html.".into(),
+        ));
     }
 
-    let verify = client.get(website_url).send().await
-        .map_err(|e| AppError::ExternalService(format!("Website verification failed: {}", e)))?;
+    let verify =
+        client.get(website_url).send().await.map_err(|e| {
+            AppError::ExternalService(format!("Website verification failed: {}", e))
+        })?;
     if !verify.status().is_success() {
-        return Err(AppError::ExternalService(format!("Website returned HTTP {} after installation.", verify.status())));
+        return Err(AppError::ExternalService(format!(
+            "Website returned HTTP {} after installation.",
+            verify.status()
+        )));
     }
     let live = verify.text().await.unwrap_or_default();
-    let verified = live.contains(&format!("api.goldetech.com/api/public/agents/{}/widget.js", public_key));
+    let verified = live.contains(&format!(
+        "api.goldetech.com/api/public/agents/{}/widget.js",
+        public_key
+    ));
     if !verified {
-        return Err(AppError::ExternalService("File was saved, but the live website did not expose the GOLD-e widget script yet.".into()));
+        return Err(AppError::ExternalService(
+            "File was saved, but the live website did not expose the GOLD-e widget script yet."
+                .into(),
+        ));
     }
 
     let _ = sqlx::query(
@@ -897,87 +1165,164 @@ pub async fn connect_website_via_cpanel(
     }))
 }
 
-
-pub async fn public_chat(pool:&PgPool, config:&Config, public_key:&str, dto:PublicAgentChatDto)->Result<PublicAgentChatResponse,AppError>{
-    let agent=sqlx::query_as::<_,AiAgent>("SELECT * FROM ai_agents WHERE public_key=$1 AND status='ACTIVE'")
-        .bind(public_key).fetch_optional(pool).await?
-        .ok_or_else(||AppError::NotFound("Published AI agent not found".into()))?;
-    let result=chat(pool,config,agent.workspace_id,agent.id,AiAgentChatDto{
-        conversation_id:dto.conversation_id, external_user_id:dto.visitor_id,
-        channel:Some("WEBSITE".into()), message:dto.message,
-    }).await?;
-    Ok(PublicAgentChatResponse{conversation_id:result.conversation_id,reply:result.reply,agent_name:agent.name,channel:"WEBSITE".into()})
+pub async fn public_chat(
+    pool: &PgPool,
+    config: &Config,
+    public_key: &str,
+    dto: PublicAgentChatDto,
+) -> Result<PublicAgentChatResponse, AppError> {
+    let agent = sqlx::query_as::<_, AiAgent>(
+        "SELECT * FROM ai_agents WHERE public_key=$1 AND status='ACTIVE'",
+    )
+    .bind(public_key)
+    .fetch_optional(pool)
+    .await?
+    .ok_or_else(|| AppError::NotFound("Published AI agent not found".into()))?;
+    let result = chat(
+        pool,
+        config,
+        agent.workspace_id,
+        agent.id,
+        AiAgentChatDto {
+            conversation_id: dto.conversation_id,
+            external_user_id: dto.visitor_id,
+            channel: Some("WEBSITE".into()),
+            message: dto.message,
+        },
+    )
+    .await?;
+    Ok(PublicAgentChatResponse {
+        conversation_id: result.conversation_id,
+        reply: result.reply,
+        agent_name: agent.name,
+        channel: "WEBSITE".into(),
+    })
 }
 
-
 pub async fn handle_meta_inbound(
-    pool:&PgPool, config:&Config, channel:&str, external_account_id:&str, sender_id:&str, message:&str
-)->Result<String,AppError>{
-    let connection=sqlx::query_as::<_,AiAgentChannelConnection>(
+    pool: &PgPool,
+    config: &Config,
+    channel: &str,
+    external_account_id: &str,
+    sender_id: &str,
+    message: &str,
+) -> Result<String, AppError> {
+    let connection = sqlx::query_as::<_, AiAgentChannelConnection>(
         "SELECT * FROM ai_agent_channel_connections
          WHERE channel=$1 AND external_account_id=$2 AND status='ACTIVE'
-         ORDER BY created_at DESC LIMIT 1"
-    ).bind(channel).bind(external_account_id).fetch_optional(pool).await?
-     .ok_or_else(||AppError::NotFound("No active AI agent channel connection found".into()))?;
+         ORDER BY created_at DESC LIMIT 1",
+    )
+    .bind(channel)
+    .bind(external_account_id)
+    .fetch_optional(pool)
+    .await?
+    .ok_or_else(|| AppError::NotFound("No active AI agent channel connection found".into()))?;
 
-    let secret=connection.secret_ciphertext.as_deref().ok_or_else(||AppError::BadRequest("Channel access token is not configured".into()))?;
-    let token=decrypt_channel_secret(config,secret)?;
+    let secret = connection
+        .secret_ciphertext
+        .as_deref()
+        .ok_or_else(|| AppError::BadRequest("Channel access token is not configured".into()))?;
+    let token = decrypt_channel_secret(config, secret)?;
 
     let contact_id: Option<Uuid> = sqlx::query_scalar(
         "SELECT id FROM contacts WHERE workspace_id=$1
          AND regexp_replace(phone,'\\D','','g')=regexp_replace($2,'\\D','','g')
-         ORDER BY created_at ASC LIMIT 1"
-    ).bind(connection.workspace_id).bind(sender_id).fetch_optional(pool).await?;
+         ORDER BY created_at ASC LIMIT 1",
+    )
+    .bind(connection.workspace_id)
+    .bind(sender_id)
+    .fetch_optional(pool)
+    .await?;
 
-    let contact_id = if let Some(id) = contact_id { Some(id) } else {
-        Some(sqlx::query_scalar::<_,Uuid>(
-            "INSERT INTO contacts (workspace_id,first_name,phone,status)
-             VALUES ($1,$2,$3,'ACTIVE') RETURNING id"
-        ).bind(connection.workspace_id).bind("Customer").bind(sender_id).fetch_one(pool).await?)
+    let contact_id = if let Some(id) = contact_id {
+        Some(id)
+    } else {
+        Some(
+            sqlx::query_scalar::<_, Uuid>(
+                "INSERT INTO contacts (workspace_id,first_name,phone,status)
+             VALUES ($1,$2,$3,'ACTIVE') RETURNING id",
+            )
+            .bind(connection.workspace_id)
+            .bind("Customer")
+            .bind(sender_id)
+            .fetch_one(pool)
+            .await?,
+        )
     };
 
     let conversation_id: Uuid = if let Some(id) = sqlx::query_scalar(
         "SELECT id FROM ai_agent_conversations
          WHERE workspace_id=$1 AND agent_id=$2 AND channel=$3 AND external_user_id=$4
            AND status <> 'CLOSED'
-         ORDER BY updated_at DESC LIMIT 1"
-    ).bind(connection.workspace_id).bind(connection.agent_id).bind(channel).bind(sender_id)
-     .fetch_optional(pool).await? {
+         ORDER BY updated_at DESC LIMIT 1",
+    )
+    .bind(connection.workspace_id)
+    .bind(connection.agent_id)
+    .bind(channel)
+    .bind(sender_id)
+    .fetch_optional(pool)
+    .await?
+    {
         sqlx::query("UPDATE ai_agent_conversations SET contact_id=$2,updated_at=NOW() WHERE id=$1")
-            .bind(id).bind(contact_id).execute(pool).await?;
+            .bind(id)
+            .bind(contact_id)
+            .execute(pool)
+            .await?;
         id
     } else {
-        sqlx::query_scalar::<_,Uuid>(
+        sqlx::query_scalar::<_, Uuid>(
             "INSERT INTO ai_agent_conversations
              (workspace_id,agent_id,contact_id,channel,external_user_id)
-             VALUES ($1,$2,$3,$4,$5) RETURNING id"
-        ).bind(connection.workspace_id).bind(connection.agent_id).bind(contact_id).bind(channel).bind(sender_id)
-         .fetch_one(pool).await?
+             VALUES ($1,$2,$3,$4,$5) RETURNING id",
+        )
+        .bind(connection.workspace_id)
+        .bind(connection.agent_id)
+        .bind(contact_id)
+        .bind(channel)
+        .bind(sender_id)
+        .fetch_one(pool)
+        .await?
     };
 
-    let current_status: String = sqlx::query_scalar(
-        "SELECT status FROM ai_agent_conversations WHERE id=$1"
-    ).bind(conversation_id).fetch_one(pool).await?;
+    let current_status: String =
+        sqlx::query_scalar("SELECT status FROM ai_agent_conversations WHERE id=$1")
+            .bind(conversation_id)
+            .fetch_one(pool)
+            .await?;
 
     if current_status == "HUMAN" {
         sqlx::query(
             "INSERT INTO ai_agent_messages (conversation_id,role,content,metadata)
-             VALUES ($1,'user',$2,$3)"
-        ).bind(conversation_id).bind(message)
-         .bind(json!({"source":"CUSTOMER","channel":channel}))
-         .execute(pool).await?;
+             VALUES ($1,'user',$2,$3)",
+        )
+        .bind(conversation_id)
+        .bind(message)
+        .bind(json!({"source":"CUSTOMER","channel":channel}))
+        .execute(pool)
+        .await?;
         sqlx::query("UPDATE ai_agent_conversations SET updated_at=NOW() WHERE id=$1")
-            .bind(conversation_id).execute(pool).await?;
+            .bind(conversation_id)
+            .execute(pool)
+            .await?;
         return Ok("Customer message recorded for owner".into());
     }
 
-    let result=chat(pool,config,connection.workspace_id,connection.agent_id,AiAgentChatDto{
-        conversation_id:Some(conversation_id), external_user_id:Some(sender_id.to_string()),
-        channel:Some(channel.to_string()), message:message.to_string()
-    }).await?;
+    let result = chat(
+        pool,
+        config,
+        connection.workspace_id,
+        connection.agent_id,
+        AiAgentChatDto {
+            conversation_id: Some(conversation_id),
+            external_user_id: Some(sender_id.to_string()),
+            channel: Some(channel.to_string()),
+            message: message.to_string(),
+        },
+    )
+    .await?;
 
-    let http=Client::new();
-    let payload=match channel {
+    let http = Client::new();
+    let payload = match channel {
         "WHATSAPP" => json!({
             "messaging_product":"whatsapp","to":sender_id,"type":"text",
             "text":{"preview_url":false,"body":result.reply}
@@ -987,16 +1332,27 @@ pub async fn handle_meta_inbound(
             "message":{"text":result.reply}
         }),
     };
-    let target_id = connection.external_account_id.as_deref().unwrap_or(external_account_id);
-    let url=match channel {
-        "INSTAGRAM" => format!("https://graph.instagram.com/v26.0/{}/messages",target_id),
-        _ => format!("https://graph.facebook.com/v20.0/{}/messages",target_id),
+    let target_id = connection
+        .external_account_id
+        .as_deref()
+        .unwrap_or(external_account_id);
+    let url = match channel {
+        "INSTAGRAM" => format!("https://graph.instagram.com/v26.0/{}/messages", target_id),
+        _ => format!("https://graph.facebook.com/v20.0/{}/messages", target_id),
     };
-    let response=http.post(url).bearer_auth(token).json(&payload).send().await
-        .map_err(|e|AppError::ExternalService(format!("Meta send failed: {}",e)))?;
+    let response = http
+        .post(url)
+        .bearer_auth(token)
+        .json(&payload)
+        .send()
+        .await
+        .map_err(|e| AppError::ExternalService(format!("Meta send failed: {}", e)))?;
     if !response.status().is_success() {
-        let body=response.text().await.unwrap_or_default();
-        return Err(AppError::ExternalService(format!("Meta send error: {}",body)));
+        let body = response.text().await.unwrap_or_default();
+        return Err(AppError::ExternalService(format!(
+            "Meta send error: {}",
+            body
+        )));
     }
     Ok(result.reply)
 }

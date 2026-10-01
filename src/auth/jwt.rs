@@ -7,7 +7,7 @@ use uuid::Uuid;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Claims {
-    pub sub: Uuid,           // user_id
+    pub sub: Uuid, // user_id
     pub email: String,
     pub role: String,
     pub workspace_id: Option<Uuid>,

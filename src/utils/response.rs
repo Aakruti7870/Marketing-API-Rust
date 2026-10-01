@@ -1,6 +1,6 @@
+use super::pagination::PaginationMeta;
 use axum::{http::StatusCode, response::IntoResponse, Json};
 use serde::Serialize;
-use super::pagination::PaginationMeta;
 
 #[derive(Serialize)]
 pub struct ApiResponse<T: Serialize> {
@@ -39,7 +39,11 @@ pub fn json_created<T: Serialize>(data: T, message: &str) -> impl IntoResponse {
     )
 }
 
-pub fn json_paginated<T: Serialize>(data: Vec<T>, pagination: PaginationMeta, message: &str) -> impl IntoResponse {
+pub fn json_paginated<T: Serialize>(
+    data: Vec<T>,
+    pagination: PaginationMeta,
+    message: &str,
+) -> impl IntoResponse {
     (
         StatusCode::OK,
         Json(PaginatedResponse {

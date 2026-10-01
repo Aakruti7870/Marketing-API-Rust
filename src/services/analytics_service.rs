@@ -1,16 +1,11 @@
 use crate::error::AppError;
-use crate::models::{
-    ActivityItem, ChannelMetric, DashboardData, DashboardSummary,
-};
+use crate::models::{ActivityItem, ChannelMetric, DashboardData, DashboardSummary};
 use crate::services::agent_service::list_runs;
 use crate::utils::pagination::PaginationQuery;
 use sqlx::PgPool;
 use uuid::Uuid;
 
-pub async fn get_dashboard(
-    pool: &PgPool,
-    workspace_id: Uuid,
-) -> Result<DashboardData, AppError> {
+pub async fn get_dashboard(pool: &PgPool, workspace_id: Uuid) -> Result<DashboardData, AppError> {
     // 1. Total contacts
     let contacts_count = sqlx::query!(
         "SELECT COUNT(*) as total FROM contacts WHERE workspace_id = $1",
@@ -117,7 +112,10 @@ pub async fn get_dashboard(
     let (recent_runs, _) = list_runs(
         pool,
         workspace_id,
-        PaginationQuery { page: Some(1), limit: Some(5) },
+        PaginationQuery {
+            page: Some(1),
+            limit: Some(5),
+        },
         None,
     )
     .await?;
