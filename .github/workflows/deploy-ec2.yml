@@ -100,6 +100,7 @@ jobs:
             # Take a consistent database dump before the new executable can run embedded migrations.
             sudo -u golde python3 - "$APP_DIR/.env" "$BACKUP_DIR/database.predeploy.$TS.dump" <<'PY'
             import os, subprocess, sys
+            from urllib.parse import urlparse, unquote, parse_qs
             env_file, backup = sys.argv[1], sys.argv[2]
             values = {}
             with open(env_file, encoding="utf-8") as f:
@@ -111,15 +112,26 @@ jobs:
             url = values.get("DATABASE_URL")
             if not url:
                 raise SystemExit("DATABASE_URL missing; refusing deployment")
+            parsed = urlparse(url)
+            if not parsed.hostname or not parsed.path.strip("/"):
+                raise SystemExit("DATABASE_URL invalid; refusing deployment")
             env = os.environ.copy()
-            env["PGDATABASE"] = url
+            env["PGHOST"] = parsed.hostname
+            env["PGPORT"] = str(parsed.port or 5432)
+            env["PGUSER"] = unquote(parsed.username or "")
+            env["PGPASSWORD"] = unquote(parsed.password or "")
+            env["PGDATABASE"] = unquote(parsed.path.lstrip("/"))
+            env["PGSSLMODE"] = parse_qs(parsed.query).get("sslmode", ["prefer"])[0]
             subprocess.run(["pg_dump", "--format=custom", "--file", backup], env=env, check=True)
+            if not os.path.isfile(backup) or os.path.getsize(backup) == 0:
+                raise SystemExit("Database backup is empty; refusing deployment")
+            subprocess.run(["pg_restore", "--list", backup], stdout=subprocess.DEVNULL, check=True)
             os.chmod(backup, 0o600)
             PY
             sudo chown golde:golde "$BACKUP_DIR/database.predeploy.$TS.dump"
 
             # Replace wildcard CORS with the known public portal origins; retain the backup above.
-            sudo -u golde python3 - "$APP_DIR/.env" <<'PY'
+            sudo python3 - "$APP_DIR/.env" <<'PY'
             import os, sys, tempfile
             path = sys.argv[1]
             lines = open(path, encoding="utf-8").read().splitlines()
@@ -152,7 +164,15 @@ jobs:
             fi
             sudo install -o golde -g golde -m 0755 "$BINARY_PATH" "$APP_DIR/bin/golde-marketing-api.new"
             sudo mv -f "$APP_DIR/bin/golde-marketing-api.new" "$APP_DIR/bin/golde-marketing-api"
-            sudo systemctl restart golde-marketing-api.service
+            if ! sudo systemctl restart golde-marketing-api.service; then
+              echo "Service restart failed; rolling back executable and environment."
+              sudo cp -a "$BACKUP_DIR/binary.predeploy.$TS" "$APP_DIR/bin/golde-marketing-api"
+              sudo cp -a "$BACKUP_DIR/env.predeploy.$TS" "$APP_DIR/.env"
+              sudo chown golde:golde "$APP_DIR/bin/golde-marketing-api" "$APP_DIR/.env"
+              sudo chmod 0600 "$APP_DIR/.env"
+              sudo systemctl restart golde-marketing-api.service || true
+              exit 1
+            fi
 
             HEALTHY=false
             for i in $(seq 1 15); do
