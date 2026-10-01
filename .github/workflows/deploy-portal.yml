@@ -37,6 +37,15 @@ jobs:
       - name: Package portal release
         run: tar -czf /tmp/golde-portal-release.tar.gz -C frontend/dist .
 
+      - name: Diagnose GitHub OIDC identity (claims only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          TOKEN_JSON="$(curl -fsS -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=sts.amazonaws.com")"
+          TOKEN="$(jq -r '.value' <<< "$TOKEN_JSON")"
+          CLAIMS="$(TOKEN="$TOKEN" python3 -c 'import os,base64,json; p=os.environ["TOKEN"].split(".")[1]; p += "="*((4-len(p)%4)%4); d=json.loads(base64.urlsafe_b64decode(p)); print(json.dumps({k:d.get(k) for k in ["iss","aud","sub","repository","ref","job_workflow_ref"]}))')"
+          echo "$CLAIMS"
+
       - name: Configure AWS credentials through GitHub OIDC
         uses: aws-actions/configure-aws-credentials@v4
         with:
