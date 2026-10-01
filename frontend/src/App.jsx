@@ -481,6 +481,8 @@ function makeNode(def, index=0) {
     SET:{values:{source:"GrowthOS"}},
     DELAY:{seconds:2},
     WHATSAPP_MESSAGE:{to:"{{contact.phone}}",content:"Hello {{contact.name}}"},
+    SCHEDULE_TRIGGER:{interval_seconds:300,enabled:true},
+    WEBHOOK_TRIGGER:{path:"/hooks/growth-workflow",method:"POST"},
   };
   return {id:"node_"+Date.now()+"_"+index+"_"+Math.random().toString(36).slice(2,7),node_key:"node_"+(index+1),node_type:def.type,name:def.label,config:configs[def.type]||{},position:{x,y}};
 }
@@ -544,10 +546,10 @@ function AutomationCanvas({ onBack, onSaved }) {
       const triggerTypes=[...new Set(triggerNodes.map(n=>n.node_type))];
       const payload={
         name:name.trim(),description:description.trim()||null,
-        triggers:triggerTypes.map(trigger_type=>({trigger_type,config:{},enabled:true})),
+        triggers:triggerTypes.map(trigger_type=>({trigger_type,config:nodes.find(n=>n.node_type===trigger_type)?.config||{},enabled:true})),
         nodes:nodes.map(n=>({node_key:n.node_key,node_type:n.node_type,name:n.name,config:n.config||{},position:n.position||{}})),
         edges:edges.map(e=>({source_node_key:nodes.find(n=>n.id===e.source)?.node_key||"",target_node_key:nodes.find(n=>n.id===e.target)?.node_key||"",config:e.config||{}})),
-        schedule:triggerTypes.includes("SCHEDULE_TRIGGER")?{interval_seconds:300,enabled:true}:null
+        schedule:triggerTypes.includes("SCHEDULE_TRIGGER")?{interval_seconds:Math.max(15,Number(nodes.find(n=>n.node_type==="SCHEDULE_TRIGGER")?.config?.interval_seconds||300)),enabled:true}:null
       };
       let id=createdId;
       if(!id){
@@ -640,6 +642,14 @@ function AutomationCanvas({ onBack, onSaved }) {
           <div>
             <div className="inspector-head"><div><span className="panel-kicker">CONFIGURATION</span><h3>{selectedNode.name}</h3></div><button className="icon-btn" onClick={()=>deleteNode(selectedNode.id)}><X size={16}/></button></div>
             <label className="inspector-label">Node name<input value={selectedNode.name} onChange={e=>updateNode(selectedNode.id,{name:e.target.value})}/></label>
+            {selectedNode.node_type==="SCHEDULE_TRIGGER"&&<>
+              <label className="inspector-label">Run every (seconds)<input type="number" min="15" max="86400" step="15" value={selectedNode.config?.interval_seconds??300} onChange={e=>updateConfig(selectedNode.id,"interval_seconds",Math.max(15,Number(e.target.value)||15))}/></label>
+              <div className="inspector-note">Minimum interval: 15 seconds. Publish the workflow to enable recurring runs.</div>
+            </>}
+            {selectedNode.node_type==="WEBHOOK_TRIGGER"&&<>
+              <label className="inspector-label">HTTP method<select value={selectedNode.config?.method||"POST"} onChange={e=>updateConfig(selectedNode.id,"method",e.target.value)}><option>POST</option><option>GET</option></select></label>
+              <label className="inspector-label">Webhook path<input value={selectedNode.config?.path||"/hooks/growth-workflow"} onChange={e=>updateConfig(selectedNode.id,"path",e.target.value)} placeholder="/hooks/my-workflow"/></label>
+            </>}
             {selectedNode.node_type==="HTTP_REQUEST"&&<>
               <label className="inspector-label">Method<select value={selectedNode.config?.method||"GET"} onChange={e=>updateConfig(selectedNode.id,"method",e.target.value)}><option>GET</option><option>POST</option><option>PUT</option><option>PATCH</option><option>DELETE</option></select></label>
               <label className="inspector-label">URL<input value={selectedNode.config?.url||""} onChange={e=>updateConfig(selectedNode.id,"url",e.target.value)} placeholder="https://example.com/api"/></label>
@@ -654,7 +664,11 @@ function AutomationCanvas({ onBack, onSaved }) {
               <label className="inspector-label">Operator<select value={selectedNode.config?.operator||"exists"} onChange={e=>updateConfig(selectedNode.id,"operator",e.target.value)}><option value="exists">exists</option><option value="eq">equals</option><option value="neq">not equals</option><option value="truthy">truthy</option></select></label>
               {(selectedNode.config?.operator==="eq"||selectedNode.config?.operator==="neq")&&<label className="inspector-label">Value<input value={selectedNode.config?.value??""} onChange={e=>updateConfig(selectedNode.id,"value",e.target.value)}/></label>}
             </>}
-            {selectedNode.node_type==="SET"&&<label className="inspector-label">Variable<input value={Object.keys(selectedNode.config?.values||{})[0]||"source"} onChange={e=>{const old=Object.keys(selectedNode.config?.values||{})[0]||"source";const val=selectedNode.config?.values?.[old]||"";updateNode(selectedNode.id,{config:{...selectedNode.config,values:{[e.target.value]:val}}})}}/><textarea value={Object.values(selectedNode.config?.values||{})[0]||""} onChange={e=>{const key=Object.keys(selectedNode.config?.values||{})[0]||"source";updateSetValue(selectedNode.id,key,e.target.value)}} placeholder="Value or {{variable}}"/></label>}
+            {selectedNode.node_type==="SET"&&<>
+              <label className="inspector-label">Variable name<input value={Object.keys(selectedNode.config?.values||{})[0]||"source"} onChange={e=>{const old=Object.keys(selectedNode.config?.values||{})[0]||"source";const val=selectedNode.config?.values?.[old]??"";updateNode(selectedNode.id,{config:{...selectedNode.config,values:{[e.target.value||"source"]:val}}})}} placeholder="e.g. customer_name"/></label>
+              <label className="inspector-label">Value type<select value={selectedNode.config?.value_type||"string"} onChange={e=>updateConfig(selectedNode.id,"value_type",e.target.value)}><option value="string">String</option><option value="number">Number</option><option value="boolean">Boolean</option><option value="json">JSON</option><option value="expression">Variable / expression</option></select></label>
+              {selectedNode.config?.value_type==="boolean"?<label className="inspector-label">Value<select value={String(Object.values(selectedNode.config?.values||{})[0]??"false")} onChange={e=>{const key=Object.keys(selectedNode.config?.values||{})[0]||"source";updateSetValue(selectedNode.id,key,e.target.value==="true")}}><option value="true">true</option><option value="false">false</option></select></label>:<label className="inspector-label">Value<textarea value={typeof Object.values(selectedNode.config?.values||{})[0]==="string"?Object.values(selectedNode.config?.values||{})[0]:JSON.stringify(Object.values(selectedNode.config?.values||{})[0]??"")} onChange={e=>{const key=Object.keys(selectedNode.config?.values||{})[0]||"source";let value=e.target.value;if(selectedNode.config?.value_type==="number")value=Number(value)||0;else if(selectedNode.config?.value_type==="json"){try{value=JSON.parse(value)}catch{}}updateSetValue(selectedNode.id,key,value)}} placeholder="Literal, JSON, or {{variable}}"/></label>}
+            </>}
             {selectedNode.node_type.endsWith("TRIGGER")&&<div className="inspector-note">This node creates the corresponding enabled trigger when the workflow is saved.</div>}
             {selectedNode.node_type==="APPROVAL"&&<div className="inspector-note">Execution pauses here. Connect the <b>Success</b> output and <b>Declined</b> output to different downstream nodes.</div>}
             {selectedNode.node_type==="APPROVAL"?<div className="approval-connect-panel">
