@@ -58,7 +58,7 @@ jobs:
           set -euo pipefail
           REGION="ap-south-1"
           BUCKET="golde-growthos-portal-deploy-352285845269-ap-south-1"
-          KEY="releases/${GITHUB_SHA}.tar.gz"
+          KEY="releases/__GITHUB_SHA__.tar.gz"
           RELEASE="/tmp/golde-portal-release-${GITHUB_SHA}"
           ARCHIVE="/tmp/golde-portal-${GITHUB_SHA}.tar.gz"
           BACKUP="/opt/golde-portal.previous"
@@ -134,7 +134,7 @@ jobs:
           SCRIPT
 
           # Expand the commit SHA in the remote script before sending it to SSM.
-          sed -i "s/\${GITHUB_SHA}/${GITHUB_SHA}/g" /tmp/activate-portal.sh
+          sed -i "s/__GITHUB_SHA__/${GITHUB_SHA}/g" /tmp/activate-portal.sh
           jq -n --arg script "$(cat /tmp/activate-portal.sh)" '{
             DocumentName: "AWS-RunShellScript",
             InstanceIds: ["i-02f31c0724d24bac8"],
