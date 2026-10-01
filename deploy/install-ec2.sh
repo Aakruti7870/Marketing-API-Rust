@@ -48,13 +48,15 @@ PORT=4000
 HOST=127.0.0.1
 ENVIRONMENT=production
 DATABASE_URL=postgresql://golde:$DB_PASS@localhost:5432/marketing_api?sslmode=disable
+REDIS_URL=
 JWT_ACCESS_SECRET=$(sudo cat "$ACCESS_FILE")
 JWT_REFRESH_SECRET=$(sudo cat "$REFRESH_FILE")
 JWT_ACCESS_EXPIRATION_SECONDS=900
 JWT_REFRESH_EXPIRATION_SECONDS=604800
-CORS_ORIGIN=*
+CORS_ORIGIN=https://api.goldetech.com,https://www.goldetech.com
 RATE_LIMIT_REQUESTS_PER_MINUTE=120
 WHATSAPP_SIMULATION_MODE=true
+WHATSAPP_WEBHOOK_VERIFY_TOKEN=$(openssl rand -hex 32)
 RUST_LOG=info,golde_marketing_api=info,tower_http=info
 EOF
 sudo chmod 600 "$APP_DIR/.env"
