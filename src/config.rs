@@ -7,6 +7,7 @@ pub struct Config {
     pub host: String,
     pub environment: String,
     pub database_url: String,
+    pub redis_url: Option<String>,
     pub jwt_access_secret: String,
     pub jwt_refresh_secret: String,
     pub jwt_access_expiration_seconds: i64,
@@ -45,6 +46,8 @@ impl Config {
             "postgresql://golde:password@localhost:5432/marketing_api?sslmode=disable".to_string()
         });
 
+        let redis_url = env::var("REDIS_URL").ok().filter(|v| !v.trim().is_empty());
+
         let jwt_access_secret = env::var("JWT_ACCESS_SECRET")
             .unwrap_or_else(|_| "default_super_secret_access_key_123456789".to_string());
 
@@ -74,6 +77,13 @@ impl Config {
             {
                 return Err(
                     "DATABASE_URL must be configured with a production database in production"
+                        .to_string(),
+                );
+            }
+            let redis = redis_url.as_deref().unwrap_or_default();
+            if !redis.starts_with("rediss://") || !redis.contains('@') {
+                return Err(
+                    "REDIS_URL must use rediss:// TLS and include Redis AUTH credentials in production"
                         .to_string(),
                 );
             }
@@ -153,6 +163,7 @@ impl Config {
             host,
             environment,
             database_url,
+            redis_url,
             jwt_access_secret,
             jwt_refresh_secret,
             jwt_access_expiration_seconds,
