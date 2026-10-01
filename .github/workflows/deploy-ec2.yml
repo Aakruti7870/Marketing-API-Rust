@@ -1,19 +1,25 @@
+
 name: Deploy to AWS EC2 Production
 
 on:
   workflow_dispatch:
     inputs:
       confirm_production:
-        description: "Confirm deployment to production after verification"
+        description: "Confirm production deployment"
         required: true
         type: boolean
         default: false
+
+permissions:
+  contents: read
+  id-token: write
 
 jobs:
   deploy:
     if: inputs.confirm_production == true
     environment: production
     runs-on: ubuntu-latest
+    timeout-minutes: 45
 
     services:
       postgres:
@@ -36,19 +42,21 @@ jobs:
       JWT_REFRESH_SECRET: deployment_build_refresh_secret_at_least_32_chars
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout source
+        uses: actions/checkout@v4
 
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
 
       - name: Install SQLx CLI
         run: cargo install sqlx-cli --no-default-features --features rustls,postgres
 
-      - name: Prepare database schema
+      - name: Prepare CI database schema
         run: sqlx migrate run --source ./migrations
 
-      - name: Format Check
+      - name: Format check
         run: cargo fmt --all -- --check
 
       - name: Clippy
@@ -57,148 +65,265 @@ jobs:
       - name: Tests
         run: cargo test --all-features -- --nocapture
 
-      - name: Build
+      - name: Build release binary
         run: cargo build --release --bin golde-marketing-api
 
-      - name: Prepare release staging directory
-        uses: appleboy/ssh-action@v1.0.3
+      - name: Validate release binary
+        run: |
+          set -euo pipefail
+          test -s target/release/golde-marketing-api
+          file target/release/golde-marketing-api
+
+      - name: Package release
+        run: |
+          set -euo pipefail
+          tar -czf /tmp/golde-marketing-api-release.tar.gz \
+            -C target/release golde-marketing-api
+          tar -tzf /tmp/golde-marketing-api-release.tar.gz
+
+      - name: Configure AWS credentials using GitHub OIDC
+        uses: aws-actions/configure-aws-credentials@v4
         with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USERNAME }}
-          key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
-          script: |
-            rm -rf /tmp/golde-marketing-api-release
-            mkdir -p /tmp/golde-marketing-api-release
+          role-to-assume: arn:aws:iam::352285845269:role/golde-growthos-portal-deploy
+          aws-region: ap-south-1
 
-      - name: Upload release
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USERNAME }}
-          key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
-          source: "target/release/golde-marketing-api,migrations"
-          target: "/tmp/golde-marketing-api-release/"
+      - name: Verify AWS identity
+        run: aws sts get-caller-identity
 
-      - name: Activate release and restart service
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USERNAME }}
-          key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
-          script: |
-            set -euo pipefail
-            APP_DIR=/opt/golde-marketing-api
-            RELEASE_DIR=/tmp/golde-marketing-api-release
-            BACKUP_DIR="$APP_DIR/backups"
-            TS=$(date -u +%Y%m%dT%H%M%SZ)
-            sudo install -d -o golde -g golde -m 0700 "$BACKUP_DIR"
+      - name: Upload release to private S3
+        env:
+          RELEASE_BUCKET: golde-growthos-portal-deploy-352285845269-ap-south-1
+        run: |
+          set -euo pipefail
+          aws s3 cp \
+            /tmp/golde-marketing-api-release.tar.gz \
+            "s3://${RELEASE_BUCKET}/releases/backend-${GITHUB_SHA}.tar.gz" \
+            --sse AES256
 
-            # Preserve the current executable and environment before any change.
-            sudo cp -a "$APP_DIR/bin/golde-marketing-api" "$BACKUP_DIR/binary.predeploy.$TS"
-            sudo cp -a "$APP_DIR/.env" "$BACKUP_DIR/env.predeploy.$TS"
+      - name: Deploy through AWS Systems Manager
+        env:
+          RELEASE_BUCKET: golde-growthos-portal-deploy-352285845269-ap-south-1
+        shell: bash
+        run: |
+          set -euo pipefail
 
-            # Take a consistent database dump before the new executable can run embedded migrations.
-            sudo -u golde python3 - "$APP_DIR/.env" "$BACKUP_DIR/database.predeploy.$TS.dump" <<'PY'
-            import os, subprocess, sys
-            from urllib.parse import urlparse, unquote, parse_qs
-            env_file, backup = sys.argv[1], sys.argv[2]
-            values = {}
-            with open(env_file, encoding="utf-8") as f:
-                for line in f:
-                    line = line.strip()
-                    if line and not line.startswith("#") and "=" in line:
-                        k, v = line.split("=", 1)
-                        values[k.strip()] = v.strip().strip('"').strip("'")
-            url = values.get("DATABASE_URL")
-            if not url:
-                raise SystemExit("DATABASE_URL missing; refusing deployment")
-            parsed = urlparse(url)
-            if not parsed.hostname or not parsed.path.strip("/"):
-                raise SystemExit("DATABASE_URL invalid; refusing deployment")
-            env = os.environ.copy()
-            env["PGHOST"] = parsed.hostname
-            env["PGPORT"] = str(parsed.port or 5432)
-            env["PGUSER"] = unquote(parsed.username or "")
-            env["PGPASSWORD"] = unquote(parsed.password or "")
-            env["PGDATABASE"] = unquote(parsed.path.lstrip("/"))
-            env["PGSSLMODE"] = parse_qs(parsed.query).get("sslmode", ["prefer"])[0]
-            subprocess.run(["pg_dump", "--format=custom", "--file", backup], env=env, check=True)
-            if not os.path.isfile(backup) or os.path.getsize(backup) == 0:
-                raise SystemExit("Database backup is empty; refusing deployment")
-            subprocess.run(["pg_restore", "--list", backup], stdout=subprocess.DEVNULL, check=True)
-            os.chmod(backup, 0o600)
-            PY
-            sudo chown golde:golde "$BACKUP_DIR/database.predeploy.$TS.dump"
+          cat > /tmp/activate-backend.sh <<'REMOTE_SCRIPT'
+          set -Eeuo pipefail
 
-            # Replace wildcard CORS with the known public portal origins; retain the backup above.
-            sudo python3 - "$APP_DIR/.env" <<'PY'
-            import os, sys, tempfile
-            path = sys.argv[1]
-            lines = open(path, encoding="utf-8").read().splitlines()
-            value = "https://goldetech.com,https://www.goldetech.com"
-            out, found = [], False
-            for line in lines:
-                if line.split("=", 1)[0].strip() == "CORS_ORIGIN":
-                    out.append("CORS_ORIGIN=" + value)
-                    found = True
-                else:
-                    out.append(line)
-            if not found:
-                out.append("CORS_ORIGIN=" + value)
-            fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path), prefix=".env.")
-            try:
-                with os.fdopen(fd, "w", encoding="utf-8") as f:
-                    f.write("\n".join(out) + "\n")
-                os.chmod(tmp, 0o600)
-                os.replace(tmp, path)
-            finally:
-                if os.path.exists(tmp):
-                    os.unlink(tmp)
-            PY
+          REGION="ap-south-1"
+          BUCKET="golde-growthos-portal-deploy-352285845269-ap-south-1"
+          INSTANCE_ID="i-02f31c0724d24bac8"
+          SHA="__GITHUB_SHA__"
+          APP_DIR="/opt/golde-marketing-api"
+          BINARY="${APP_DIR}/bin/golde-marketing-api"
+          BACKUP_DIR="${APP_DIR}/backups"
+          STAGE="/tmp/golde-api-${SHA}"
+          ARCHIVE="/tmp/golde-api-${SHA}.tar.gz"
+          TS="$(date -u +%Y%m%dT%H%M%SZ)"
 
-            BINARY_PATH=$(find "$RELEASE_DIR" -type f -name golde-marketing-api -print -quit)
-            if [ -z "$BINARY_PATH" ]; then
-              echo "Release binary not found under $RELEASE_DIR" >&2
-              sudo cp -a "$BACKUP_DIR/env.predeploy.$TS" "$APP_DIR/.env"
-              exit 1
+          echo "Preparing release ${SHA}"
+
+          # SSM runs this script on the instance. Do not expose SSH publicly.
+          if [ "$(id -u)" -ne 0 ]; then
+            echo "Deployment script must run as root." >&2
+            exit 1
+          fi
+
+          if ! command -v aws >/dev/null 2>&1; then
+            export DEBIAN_FRONTEND=noninteractive
+            apt-get update -y
+            apt-get install -y awscli
+          fi
+
+          command -v curl >/dev/null 2>&1
+          command -v python3 >/dev/null 2>&1
+          command -v pg_dump >/dev/null 2>&1
+          command -v pg_restore >/dev/null 2>&1
+
+          test -x "${BINARY}"
+          test -s "${APP_DIR}/.env"
+          id golde >/dev/null 2>&1
+          systemctl is-active --quiet golde-marketing-api.service
+
+          # Download and validate the release before changing production.
+          aws s3 cp \
+            "s3://${BUCKET}/releases/backend-${SHA}.tar.gz" \
+            "${ARCHIVE}" \
+            --region "${REGION}"
+
+          tar -tzf "${ARCHIVE}" | grep -qx 'golde-marketing-api'
+          install -d -m 0700 "${STAGE}"
+          tar -xzf "${ARCHIVE}" -C "${STAGE}"
+          test -s "${STAGE}/golde-marketing-api"
+
+          # Back up the current executable and environment.
+          install -d -o golde -g golde -m 0700 "${BACKUP_DIR}"
+          cp -a "${BINARY}" "${BACKUP_DIR}/binary.predeploy.${TS}"
+          cp -a "${APP_DIR}/.env" "${BACKUP_DIR}/env.predeploy.${TS}"
+
+          # Take and validate a database backup before replacing the binary.
+          # Credentials are read from the existing production environment file.
+          python3 - "${APP_DIR}/.env" "${BACKUP_DIR}/database.predeploy.${TS}.dump" <<'PY'
+          import os
+          import subprocess
+          import sys
+          from urllib.parse import urlparse, unquote, parse_qs
+
+          env_file, backup = sys.argv[1], sys.argv[2]
+          values = {}
+
+          with open(env_file, encoding="utf-8") as f:
+              for line in f:
+                  line = line.strip()
+                  if line and not line.startswith("#") and "=" in line:
+                      key, value = line.split("=", 1)
+                      values[key.strip()] = value.strip().strip('"').strip("'")
+
+          url = values.get("DATABASE_URL")
+          if not url:
+              raise SystemExit("DATABASE_URL missing; deployment aborted.")
+
+          parsed = urlparse(url)
+          if not parsed.hostname or not parsed.path.strip("/"):
+              raise SystemExit("DATABASE_URL invalid; deployment aborted.")
+
+          env = os.environ.copy()
+          env["PGHOST"] = parsed.hostname
+          env["PGPORT"] = str(parsed.port or 5432)
+          env["PGUSER"] = unquote(parsed.username or "")
+          env["PGPASSWORD"] = unquote(parsed.password or "")
+          env["PGDATABASE"] = unquote(parsed.path.lstrip("/"))
+          env["PGSSLMODE"] = parse_qs(parsed.query).get("sslmode", ["prefer"])[0]
+
+          subprocess.run(
+              ["pg_dump", "--format=custom", "--file", backup],
+              env=env,
+              check=True,
+          )
+
+          if not os.path.isfile(backup) or os.path.getsize(backup) == 0:
+              raise SystemExit("Database backup is empty; deployment aborted.")
+
+          subprocess.run(
+              ["pg_restore", "--list", backup],
+              stdout=subprocess.DEVNULL,
+              check=True,
+          )
+          os.chmod(backup, 0o600)
+          PY
+
+          chown golde:golde "${BACKUP_DIR}/database.predeploy.${TS}.dump"
+          chmod 0600 "${BACKUP_DIR}/database.predeploy.${TS}.dump"
+
+          rollback() {
+            echo "Restoring previous binary and environment."
+            cp -a "${BACKUP_DIR}/binary.predeploy.${TS}" "${BINARY}"
+            cp -a "${BACKUP_DIR}/env.predeploy.${TS}" "${APP_DIR}/.env"
+            chown golde:golde "${BINARY}" "${APP_DIR}/.env"
+            chmod 0755 "${BINARY}"
+            chmod 0600 "${APP_DIR}/.env"
+            systemctl restart golde-marketing-api.service || true
+          }
+
+          # Atomically replace the executable.
+          install -o golde -g golde -m 0755 \
+            "${STAGE}/golde-marketing-api" "${BINARY}.new"
+          mv -f "${BINARY}.new" "${BINARY}"
+
+          if ! systemctl restart golde-marketing-api.service; then
+            rollback
+            exit 1
+          fi
+
+          # Require the local service health check to pass.
+          HEALTHY=false
+          for attempt in $(seq 1 15); do
+            if curl -fsS --max-time 5 \
+              http://127.0.0.1:4000/health |
+              grep -q '"status":"healthy"'; then
+              HEALTHY=true
+              break
             fi
-            sudo install -o golde -g golde -m 0755 "$BINARY_PATH" "$APP_DIR/bin/golde-marketing-api.new"
-            sudo mv -f "$APP_DIR/bin/golde-marketing-api.new" "$APP_DIR/bin/golde-marketing-api"
-            if ! sudo systemctl restart golde-marketing-api.service; then
-              echo "Service restart failed; rolling back executable and environment."
-              sudo cp -a "$BACKUP_DIR/binary.predeploy.$TS" "$APP_DIR/bin/golde-marketing-api"
-              sudo cp -a "$BACKUP_DIR/env.predeploy.$TS" "$APP_DIR/.env"
-              sudo chown golde:golde "$APP_DIR/bin/golde-marketing-api" "$APP_DIR/.env"
-              sudo chmod 0600 "$APP_DIR/.env"
-              sudo systemctl restart golde-marketing-api.service || true
-              exit 1
-            fi
+            sleep 2
+          done
 
-            HEALTHY=false
-            for i in $(seq 1 15); do
-              if curl -fsS --max-time 5 http://127.0.0.1:4000/health | grep -q '"status":"healthy"'; then
-                HEALTHY=true
-                break
-              fi
-              sleep 2
-            done
-            if [ "$HEALTHY" != true ]; then
-              echo "Health check failed; rolling back executable and environment."
-              sudo cp -a "$BACKUP_DIR/binary.predeploy.$TS" "$APP_DIR/bin/golde-marketing-api"
-              sudo cp -a "$BACKUP_DIR/env.predeploy.$TS" "$APP_DIR/.env"
-              sudo chown golde:golde "$APP_DIR/bin/golde-marketing-api" "$APP_DIR/.env"
-              sudo chmod 0600 "$APP_DIR/.env"
-              sudo systemctl restart golde-marketing-api.service
-              curl -fsS --max-time 5 http://127.0.0.1:4000/health || true
-              exit 1
-            fi
-            if ! curl -fsS --max-time 10 https://api.goldetech.com/health; then
-              echo "External health check failed; rolling back executable and environment."
-              sudo cp -a "$BACKUP_DIR/binary.predeploy.$TS" "$APP_DIR/bin/golde-marketing-api"
-              sudo cp -a "$BACKUP_DIR/env.predeploy.$TS" "$APP_DIR/.env"
-              sudo chown golde:golde "$APP_DIR/bin/golde-marketing-api" "$APP_DIR/.env"
-              sudo chmod 0600 "$APP_DIR/.env"
-              sudo systemctl restart golde-marketing-api.service
-              exit 1
-            fi
-            echo "Deployment healthy. Binary, env, and database backups retained under $BACKUP_DIR."
+          if [ "${HEALTHY}" != true ]; then
+            echo "Local health check failed."
+            journalctl -u golde-marketing-api.service -n 60 --no-pager || true
+            rollback
+            exit 1
+          fi
+
+          # Verify the public API through its HTTPS endpoint.
+          if ! curl -fsS --max-time 15 \
+            https://api.goldetech.com/health |
+            grep -q '"status":"healthy"'; then
+            echo "External health check failed."
+            rollback
+            exit 1
+          fi
+
+          echo "GOLDE_MARKETING_API_DEPLOY_OK"
+          echo "Release: ${SHA}"
+          echo "Backups: ${BACKUP_DIR}"
+          echo "Database backup: database.predeploy.${TS}.dump"
+
+          # Retain backups for manual recovery; do not delete them here.
+          REMOTE_SCRIPT
+
+          # Insert this workflow run's commit SHA into the remote script.
+          sed -i "s/__GITHUB_SHA__/${GITHUB_SHA}/g" /tmp/activate-backend.sh
+
+          # Send the deployment command to the specific SSM-managed instance.
+          jq -n \
+            --arg script "$(cat /tmp/activate-backend.sh)" \
+            '{
+              DocumentName: "AWS-RunShellScript",
+              InstanceIds: ["i-02f31c0724d24bac8"],
+              Comment: "Deploy GOLD-e GrowthOS Rust API",
+              Parameters: {commands: [$script]}
+            }' > /tmp/ssm-command.json
+
+          COMMAND_ID="$(
+            aws ssm send-command \
+              --cli-input-json file:///tmp/ssm-command.json \
+              --query 'Command.CommandId' \
+              --output text
+          )"
+
+          echo "SSM command: ${COMMAND_ID}"
+
+          # Wait for SSM to report the actual deployment result.
+          for attempt in $(seq 1 60); do
+            STATUS="$(
+              aws ssm get-command-invocation \
+                --command-id "${COMMAND_ID}" \
+                --instance-id i-02f31c0724d24bac8 \
+                --query 'Status' \
+                --output text 2>/dev/null || true
+            )"
+
+            case "${STATUS}" in
+              Success)
+                aws ssm get-command-invocation \
+                  --command-id "${COMMAND_ID}" \
+                  --instance-id i-02f31c0724d24bac8 \
+                  --query 'StandardOutputContent' \
+                  --output text
+                exit 0
+                ;;
+              Failed|Cancelled|TimedOut|Undeliverable|Terminated)
+                aws ssm get-command-invocation \
+                  --command-id "${COMMAND_ID}" \
+                  --instance-id i-02f31c0724d24bac8 \
+                  --query '[Status,StandardOutputContent,StandardErrorContent]' \
+                  --output json || true
+                exit 1
+                ;;
+            esac
+
+            sleep 5
+          done
+
+          echo "Timed out waiting for SSM command ${COMMAND_ID}" >&2
+          exit 1
