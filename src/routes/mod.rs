@@ -54,7 +54,10 @@ async fn health_check(
     let redis_status = match state.redis.as_ref() {
         Some(connection) => {
             let mut connection = connection.clone();
-            match redis::cmd("PING").query_async::<String>(&mut connection).await {
+            match redis::cmd("PING")
+                .query_async::<String>(&mut connection)
+                .await
+            {
                 Ok(response) if response == "PONG" => "healthy",
                 _ => "unhealthy",
             }
