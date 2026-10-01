@@ -67,6 +67,12 @@ jobs:
           set -euo pipefail
           REGION="ap-south-1"
           BUCKET="golde-growthos-portal-deploy-352285845269-ap-south-1"
+          if ! command -v aws >/dev/null 2>&1; then
+            export DEBIAN_FRONTEND=noninteractive
+            apt-get update -y
+            apt-get install -y awscli
+          fi
+          command -v aws >/dev/null 2>&1 || { echo "AWS CLI installation failed" >&2; exit 1; }
           KEY="releases/__GITHUB_SHA__.tar.gz"
           RELEASE="/tmp/golde-portal-release-__GITHUB_SHA__"
           ARCHIVE="/tmp/golde-portal-__GITHUB_SHA__.tar.gz"
