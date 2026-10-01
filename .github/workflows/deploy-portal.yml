@@ -8,10 +8,13 @@ on:
       - ".github/workflows/deploy-portal.yml"
   workflow_dispatch:
 
+permissions:
+  contents: read
+  id-token: write
+
 jobs:
   deploy-portal:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout GOLD-e GrowthOS project
         uses: actions/checkout@v4
@@ -25,104 +28,135 @@ jobs:
 
       - name: Install frontend dependencies
         working-directory: frontend
-        run: npm install --no-audit --no-fund
+        run: npm ci --no-audit --no-fund
 
       - name: Build GOLD-e GrowthOS Portal
         working-directory: frontend
         run: npm run build
 
-      - name: Upload new portal
-        uses: appleboy/scp-action@v0.1.7
+      - name: Package portal release
+        run: tar -czf /tmp/golde-portal-release.tar.gz -C frontend/dist .
+
+      - name: Configure AWS credentials through GitHub OIDC
+        uses: aws-actions/configure-aws-credentials@v4
         with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USERNAME }}
-          key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
-          source: "frontend/dist/*"
-          target: "/tmp/golde-portal-release/"
+          role-to-assume: arn:aws:iam::352285845269:role/golde-growthos-portal-deploy
+          aws-region: ap-south-1
 
-      - name: Activate new portal
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USERNAME }}
-          key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
-          script: |
-            set -e
+      - name: Upload portal artifact to private S3
+        env:
+          RELEASE_BUCKET: golde-growthos-portal-deploy-352285845269-ap-south-1
+        run: aws s3 cp /tmp/golde-portal-release.tar.gz "s3://${RELEASE_BUCKET}/releases/${GITHUB_SHA}.tar.gz" --sse AES256
 
-            sudo mkdir -p /opt/golde-portal
-            sudo rm -rf /opt/golde-portal/*
-            sudo cp -r /tmp/golde-portal-release/frontend/dist/. /opt/golde-portal/
-            sudo chown -R www-data:www-data /opt/golde-portal
+      - name: Deploy through AWS Systems Manager (no inbound SSH required)
+        env:
+          RELEASE_BUCKET: golde-growthos-portal-deploy-352285845269-ap-south-1
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/activate-portal.sh <<'SCRIPT'
+          set -euo pipefail
+          REGION="ap-south-1"
+          BUCKET="golde-growthos-portal-deploy-352285845269-ap-south-1"
+          KEY="releases/${GITHUB_SHA}.tar.gz"
+          RELEASE="/tmp/golde-portal-release-${GITHUB_SHA}"
+          ARCHIVE="/tmp/golde-portal-${GITHUB_SHA}.tar.gz"
+          BACKUP="/opt/golde-portal.previous"
 
-            # The EC2 Nginx configuration already proves this is the active
-            # certificate for the public website. Reuse it directly.
-            CERT_DIR="/etc/letsencrypt/live/goldetech.com"
+          aws s3 cp "s3://${BUCKET}/${KEY}" "${ARCHIVE}" --region "${REGION}"
+          sudo mkdir -p "${RELEASE}"
+          sudo tar -xzf "${ARCHIVE}" -C "${RELEASE}"
+          sudo test -s "${RELEASE}/index.html"
+          sudo grep -q 'GOLD-e' "${RELEASE}/index.html"
 
-            if ! sudo test -s "$CERT_DIR/fullchain.pem" || ! sudo test -s "$CERT_DIR/privkey.pem"; then
-              echo "Expected public-site TLS certificate files are missing: $CERT_DIR" >&2
-              sudo ls -la /etc/letsencrypt/live/ || true
-              sudo nginx -T 2>&1 | grep -n -E 'server_name|ssl_certificate|root' || true
-              exit 1
-            fi
+          CERT_DIR="/etc/letsencrypt/live/goldetech.com"
+          if ! sudo test -s "${CERT_DIR}/fullchain.pem" || ! sudo test -s "${CERT_DIR}/privkey.pem"; then
+            echo "Expected public-site TLS certificate files are missing: ${CERT_DIR}" >&2
+            exit 1
+          fi
 
-            PORTAL_NGINX="/etc/nginx/sites-available/golde-portal"
-            sudo tee "$PORTAL_NGINX" >/dev/null <<NGINX
-            server {
-              listen 80;
-              listen [::]:80;
-              server_name goldetech.com www.goldetech.com;
-              return 301 https://goldetech.com\$request_uri;
+          PORTAL_NGINX="/etc/nginx/sites-available/golde-portal"
+          sudo tee "${PORTAL_NGINX}" >/dev/null <<NGINX
+          server {
+            listen 80;
+            listen [::]:80;
+            server_name goldetech.com www.goldetech.com;
+            return 301 https://goldetech.com\$request_uri;
+          }
+          server {
+            listen 443 ssl http2;
+            listen [::]:443 ssl http2;
+            server_name goldetech.com www.goldetech.com;
+            root /opt/golde-portal;
+            index index.html;
+            ssl_certificate ${CERT_DIR}/fullchain.pem;
+            ssl_certificate_key ${CERT_DIR}/privkey.pem;
+            location / { try_files \$uri \$uri/ /index.html; }
+            location = /index.html {
+              add_header Cache-Control "no-store, no-cache, must-revalidate, proxy-revalidate" always;
+              expires -1;
+              try_files \$uri =404;
             }
-
-            server {
-              listen 443 ssl http2;
-              listen [::]:443 ssl http2;
-              server_name goldetech.com www.goldetech.com;
-
-              root /opt/golde-portal;
-              index index.html;
-
-              ssl_certificate $CERT_DIR/fullchain.pem;
-              ssl_certificate_key $CERT_DIR/privkey.pem;
-
-              location / {
-                try_files \$uri \$uri/ /index.html;
-              }
-
-              location = /index.html {
-                add_header Cache-Control "no-store, no-cache, must-revalidate, proxy-revalidate" always;
-                expires -1;
-                try_files \$uri =404;
-              }
-
-              location = /sw.js {
-                add_header Cache-Control "no-store, no-cache, must-revalidate" always;
-                expires -1;
-                try_files \$uri =404;
-              }
+            location = /sw.js {
+              add_header Cache-Control "no-store, no-cache, must-revalidate" always;
+              expires -1;
+              try_files \$uri =404;
             }
-            NGINX
+          }
+          NGINX
 
-            # Remove enabled vhosts for the public website domains only.
-            # api.goldetech.com is not touched.
-            for enabled in /etc/nginx/sites-enabled/*; do
-              [ -e "$enabled" ] || continue
-              if sudo grep -Eo 'server_name[^;]*;' "$enabled" 2>/dev/null | grep -Eq '(^|[[:space:]])(goldetech\.com|www\.goldetech\.com)([[:space:];]|$)'; then
-                if [ "$enabled" != "/etc/nginx/sites-enabled/golde-portal" ]; then
-                  sudo rm -f "$enabled"
-                fi
+          for enabled in /etc/nginx/sites-enabled/*; do
+            [ -e "${enabled}" ] || continue
+            if sudo grep -Eo 'server_name[^;]*;' "${enabled}" 2>/dev/null | grep -Eq '(^|[[:space:]])(goldetech\.com|www\.goldetech\.com)([[:space:];]|$)'; then
+              if [ "${enabled}" != "/etc/nginx/sites-enabled/golde-portal" ]; then
+                sudo rm -f "${enabled}"
               fi
-            done
+            fi
+          done
+          sudo ln -sfn "${PORTAL_NGINX}" /etc/nginx/sites-enabled/golde-portal
 
-            sudo ln -sfn "$PORTAL_NGINX" /etc/nginx/sites-enabled/golde-portal
+          sudo nginx -t
+          sudo chown -R www-data:www-data "${RELEASE}"
+          if sudo test -d /opt/golde-portal; then
+            sudo rm -rf "${BACKUP}"
+            sudo mv /opt/golde-portal "${BACKUP}"
+          fi
+          sudo mv "${RELEASE}" /opt/golde-portal
+          if ! sudo nginx -t || ! sudo systemctl reload nginx; then
+            sudo rm -rf /opt/golde-portal
+            if sudo test -d "${BACKUP}"; then sudo mv "${BACKUP}" /opt/golde-portal; fi
+            sudo nginx -t && sudo systemctl reload nginx || true
+            exit 1
+          fi
+          curl -fsS --resolve goldetech.com:443:127.0.0.1 https://goldetech.com/ | grep -q 'GOLD-e'
+          curl -fsS https://goldetech.com/ | grep -q 'GOLD-e'
+          echo "GOLD_E_GROWTHOS_PORTAL_DEPLOY_OK"
+          SCRIPT
 
-            test -s /opt/golde-portal/index.html
-            grep -q 'GOLD-e' /opt/golde-portal/index.html
+          # Expand the commit SHA in the remote script before sending it to SSM.
+          sed -i "s/\${GITHUB_SHA}/${GITHUB_SHA}/g" /tmp/activate-portal.sh
+          jq -n --arg script "$(cat /tmp/activate-portal.sh)" '{
+            DocumentName: "AWS-RunShellScript",
+            InstanceIds: ["i-02f31c0724d24bac8"],
+            Comment: "Deploy GOLD-e GrowthOS portal from GitHub Actions",
+            Parameters: {commands: [$script]}
+          }' > /tmp/ssm-command.json
 
-            sudo nginx -t
-            sudo systemctl reload nginx
-
-            curl -fsS --resolve goldetech.com:443:127.0.0.1 https://goldetech.com/ | grep -q 'GOLD-e'
-            curl -fsS https://goldetech.com/ | grep -q 'GOLD-e'
-
-            echo "GOLD_E_GROWTHOS_PORTAL_DEPLOY_OK"
+          COMMAND_ID="$(aws ssm send-command --cli-input-json file:///tmp/ssm-command.json --query 'Command.CommandId' --output text)"
+          echo "SSM command: ${COMMAND_ID}"
+          for attempt in $(seq 1 60); do
+            STATUS="$(aws ssm get-command-invocation --command-id "${COMMAND_ID}" --instance-id i-02f31c0724d24bac8 --query 'Status' --output text 2>/dev/null || true)"
+            case "${STATUS}" in
+              Success)
+                aws ssm get-command-invocation --command-id "${COMMAND_ID}" --instance-id i-02f31c0724d24bac8 --query 'StandardOutputContent' --output text
+                exit 0
+                ;;
+              Failed|Cancelled|TimedOut|Undeliverable|Terminated)
+                aws ssm get-command-invocation --command-id "${COMMAND_ID}" --instance-id i-02f31c0724d24bac8 --query '[Status,StandardOutputContent,StandardErrorContent]' --output json || true
+                exit 1
+                ;;
+            esac
+            sleep 5
+          done
+          echo "Timed out waiting for SSM deployment command ${COMMAND_ID}" >&2
+          exit 1
