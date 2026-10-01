@@ -80,17 +80,20 @@ impl Config {
                         .to_string(),
                 );
             }
-            let redis = redis_url.as_deref().unwrap_or_default();
-            let has_auth_credentials = redis
-                .strip_prefix("rediss://")
-                .and_then(|rest| rest.split_once('@'))
-                .map(|(credentials, _)| !credentials.is_empty())
-                .unwrap_or(false);
-            if !redis.starts_with("rediss://") || !has_auth_credentials {
-                return Err(
-                    "REDIS_URL must use rediss:// TLS and include Redis AUTH credentials in production"
-                        .to_string(),
-                );
+
+            if let Some(redis) = redis_url.as_deref() {
+                let has_scheme = redis.starts_with("redis://") || redis.starts_with("rediss://");
+                let has_auth = redis
+                    .split_once("://")
+                    .and_then(|(_, rest)| rest.split_once('@'))
+                    .map(|(credentials, _)| !credentials.is_empty())
+                    .unwrap_or(false);
+                if !has_scheme || !has_auth {
+                    return Err(
+                        "REDIS_URL, when set in production, must use redis:// or rediss:// and include AUTH credentials"
+                            .to_string(),
+                    );
+                }
             }
         }
 
