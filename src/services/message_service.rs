@@ -22,7 +22,7 @@ pub async fn list_messages(
          WHERE workspace_id = $1
            AND ($2::text IS NULL OR status = $2)
          ORDER BY created_at DESC
-         LIMIT $3 OFFSET $4"
+         LIMIT $3 OFFSET $4",
     )
     .bind(workspace_id)
     .bind(&status)
@@ -55,14 +55,13 @@ pub async fn send_message(
     dto: SendMessageDto,
 ) -> Result<Message, AppError> {
     // 1. Fetch contact
-    let contact = sqlx::query_as::<_, Contact>(
-        "SELECT * FROM contacts WHERE id = $1 AND workspace_id = $2"
-    )
-    .bind(dto.contact_id)
-    .bind(workspace_id)
-    .fetch_optional(pool)
-    .await?
-    .ok_or_else(|| AppError::NotFound("Contact not found".to_string()))?;
+    let contact =
+        sqlx::query_as::<_, Contact>("SELECT * FROM contacts WHERE id = $1 AND workspace_id = $2")
+            .bind(dto.contact_id)
+            .bind(workspace_id)
+            .fetch_optional(pool)
+            .await?
+            .ok_or_else(|| AppError::NotFound("Contact not found".to_string()))?;
 
     // 2. Dispatch via WhatsApp service (with auto simulation fallback)
     let send_res = send_whatsapp_message(
@@ -84,7 +83,7 @@ pub async fn send_message(
             external_message_id, status, content, template_name, template_data, sent_at
          )
          VALUES ($1, $2, $3, 'WHATSAPP', 'OUTBOUND', $4, $5, $6, $7, $8, NOW())
-         RETURNING *"
+         RETURNING *",
     )
     .bind(message_id)
     .bind(workspace_id)
@@ -113,14 +112,13 @@ pub async fn get_message(
     workspace_id: Uuid,
     message_id: Uuid,
 ) -> Result<Message, AppError> {
-    let msg = sqlx::query_as::<_, Message>(
-        "SELECT * FROM messages WHERE id = $1 AND workspace_id = $2"
-    )
-    .bind(message_id)
-    .bind(workspace_id)
-    .fetch_optional(pool)
-    .await?
-    .ok_or_else(|| AppError::NotFound("Message not found".to_string()))?;
+    let msg =
+        sqlx::query_as::<_, Message>("SELECT * FROM messages WHERE id = $1 AND workspace_id = $2")
+            .bind(message_id)
+            .bind(workspace_id)
+            .fetch_optional(pool)
+            .await?
+            .ok_or_else(|| AppError::NotFound("Message not found".to_string()))?;
 
     Ok(msg)
 }

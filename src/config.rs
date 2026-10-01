@@ -1,3 +1,4 @@
+use axum::http::HeaderValue;
 use std::env;
 
 #[derive(Clone, Debug)]
@@ -40,8 +41,9 @@ impl Config {
         let host = env::var("HOST").unwrap_or_else(|_| "0.0.0.0".to_string());
         let environment = env::var("ENVIRONMENT").unwrap_or_else(|_| "development".to_string());
 
-        let database_url = env::var("DATABASE_URL")
-            .unwrap_or_else(|_| "postgresql://golde:password@localhost:5432/marketing_api?sslmode=disable".to_string());
+        let database_url = env::var("DATABASE_URL").unwrap_or_else(|_| {
+            "postgresql://golde:password@localhost:5432/marketing_api?sslmode=disable".to_string()
+        });
 
         let jwt_access_secret = env::var("JWT_ACCESS_SECRET")
             .unwrap_or_else(|_| "default_super_secret_access_key_123456789".to_string());
@@ -50,14 +52,30 @@ impl Config {
             .unwrap_or_else(|_| "default_super_secret_refresh_key_987654321".to_string());
 
         if environment.eq_ignore_ascii_case("production") {
-            if jwt_access_secret == "default_super_secret_access_key_123456789" {
-                return Err("JWT_ACCESS_SECRET must be configured with a secure value in production".to_string());
+            if jwt_access_secret.len() < 32
+                || jwt_access_secret == "default_super_secret_access_key_123456789"
+            {
+                return Err(
+                    "JWT_ACCESS_SECRET must be configured with a secure value in production"
+                        .to_string(),
+                );
             }
-            if jwt_refresh_secret == "default_super_secret_refresh_key_987654321" {
-                return Err("JWT_REFRESH_SECRET must be configured with a secure value in production".to_string());
+            if jwt_refresh_secret.len() < 32
+                || jwt_refresh_secret == "default_super_secret_refresh_key_987654321"
+            {
+                return Err(
+                    "JWT_REFRESH_SECRET must be configured with a secure value in production"
+                        .to_string(),
+                );
             }
-            if database_url.is_empty() || database_url == "postgresql://golde:password@localhost:5432/marketing_api?sslmode=disable" {
-                return Err("DATABASE_URL must be configured with a production database in production".to_string());
+            if database_url.is_empty()
+                || database_url
+                    == "postgresql://golde:password@localhost:5432/marketing_api?sslmode=disable"
+            {
+                return Err(
+                    "DATABASE_URL must be configured with a production database in production"
+                        .to_string(),
+                );
             }
         }
 
@@ -72,6 +90,23 @@ impl Config {
             .unwrap_or(604800); // 7 days
 
         let cors_origin = env::var("CORS_ORIGIN").unwrap_or_else(|_| "*".to_string());
+        let cors_origins: Vec<&str> = cors_origin.split(',').map(str::trim).collect();
+        if cors_origin.trim() != "*"
+            && (cors_origins.is_empty()
+                || cors_origins
+                    .iter()
+                    .any(|origin| origin.is_empty() || HeaderValue::try_from(*origin).is_err()))
+        {
+            return Err("CORS_ORIGIN must be '*' for development or a comma-separated list of valid origins".to_string());
+        }
+        if environment.eq_ignore_ascii_case("production")
+            && (cors_origin.trim() == "*"
+                || cors_origins
+                    .iter()
+                    .any(|origin| !origin.starts_with("https://")))
+        {
+            return Err("Production CORS_ORIGIN must be a comma-separated allowlist of HTTPS origins; wildcard is forbidden".to_string());
+        }
 
         let rate_limit_requests_per_minute = env::var("RATE_LIMIT_REQUESTS_PER_MINUTE")
             .unwrap_or_else(|_| "120".to_string())
@@ -83,19 +118,34 @@ impl Config {
             .to_lowercase()
             == "true";
 
-        let whatsapp_api_version = env::var("WHATSAPP_API_VERSION").unwrap_or_else(|_| "v20.0".to_string());
+        let whatsapp_api_version =
+            env::var("WHATSAPP_API_VERSION").unwrap_or_else(|_| "v20.0".to_string());
         let whatsapp_phone_number_id = env::var("WHATSAPP_PHONE_NUMBER_ID").ok();
         let whatsapp_access_token = env::var("WHATSAPP_ACCESS_TOKEN").ok();
         let whatsapp_business_account_id = env::var("WHATSAPP_BUSINESS_ACCOUNT_ID").ok();
         let whatsapp_webhook_verify_token = env::var("WHATSAPP_WEBHOOK_VERIFY_TOKEN")
             .unwrap_or_else(|_| "growthos_secure_webhook_verify_token".to_string());
         let whatsapp_app_secret = env::var("WHATSAPP_APP_SECRET").ok();
+        if environment.eq_ignore_ascii_case("production")
+            && whatsapp_webhook_verify_token == "growthos_secure_webhook_verify_token"
+        {
+            return Err(
+                "WHATSAPP_WEBHOOK_VERIFY_TOKEN must be set to a unique secret in production"
+                    .to_string(),
+            );
+        }
         let ai_api_key = env::var("AI_API_KEY").ok();
-        let ai_api_base_url = env::var("AI_API_BASE_URL").unwrap_or_else(|_| "https://api.openai.com/v1".to_string());
+        let ai_api_base_url =
+            env::var("AI_API_BASE_URL").unwrap_or_else(|_| "https://api.openai.com/v1".to_string());
         let ai_model = env::var("AI_MODEL").unwrap_or_else(|_| "gpt-5.6-luna".to_string());
-        let ai_image_model = env::var("AI_IMAGE_MODEL").unwrap_or_else(|_| "gpt-image-2".to_string());
-        let ai_temperature = env::var("AI_TEMPERATURE").ok().and_then(|v| v.parse::<f32>().ok()).unwrap_or(0.2);
-        let public_base_url = env::var("PUBLIC_BASE_URL").unwrap_or_else(|_| "https://api.goldetech.com".to_string());
+        let ai_image_model =
+            env::var("AI_IMAGE_MODEL").unwrap_or_else(|_| "gpt-image-2".to_string());
+        let ai_temperature = env::var("AI_TEMPERATURE")
+            .ok()
+            .and_then(|v| v.parse::<f32>().ok())
+            .unwrap_or(0.2);
+        let public_base_url =
+            env::var("PUBLIC_BASE_URL").unwrap_or_else(|_| "https://api.goldetech.com".to_string());
         let channel_encryption_key = env::var("CHANNEL_ENCRYPTION_KEY").ok();
 
         Ok(Self {

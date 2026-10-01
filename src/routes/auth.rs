@@ -56,7 +56,10 @@ async fn logout(
 ) -> Result<impl IntoResponse, AppError> {
     let token = body.and_then(|b| b.refresh_token.clone());
     auth_service::logout(&state.pool, token).await?;
-    Ok(json_success(serde_json::json!({ "logged_out": true }), "Logged out"))
+    Ok(json_success(
+        serde_json::json!({ "logged_out": true }),
+        "Logged out",
+    ))
 }
 
 async fn get_me(

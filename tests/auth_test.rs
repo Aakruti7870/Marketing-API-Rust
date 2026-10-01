@@ -1,4 +1,6 @@
-use golde_marketing_api::auth::{hash_password, verify_password, generate_access_token, verify_token};
+use golde_marketing_api::auth::{
+    generate_access_token, hash_password, verify_password, verify_token,
+};
 use golde_marketing_api::config::Config;
 use uuid::Uuid;
 
@@ -21,8 +23,7 @@ fn test_jwt_token_generation_and_verification() {
     let token = generate_access_token(user_id, email, role, workspace_id, &config)
         .expect("JWT generation failed");
 
-    let claims = verify_token(&token, &config.jwt_access_secret)
-        .expect("JWT verification failed");
+    let claims = verify_token(&token, &config.jwt_access_secret).expect("JWT verification failed");
 
     assert_eq!(claims.sub, user_id);
     assert_eq!(claims.email, email);

@@ -20,7 +20,7 @@ pub async fn list_campaigns(
         "SELECT * FROM campaigns
          WHERE workspace_id = $1
          ORDER BY created_at DESC
-         LIMIT $2 OFFSET $3"
+         LIMIT $2 OFFSET $3",
     )
     .bind(workspace_id)
     .bind(limit)
@@ -58,7 +58,7 @@ pub async fn create_campaign(
             target_tags, template_id, template_params, schedule_time, created_by_id
          )
          VALUES ($1, $2, $3, $4, $5, 'DRAFT', $6, $7, $8, $9, $10)
-         RETURNING *"
+         RETURNING *",
     )
     .bind(campaign_id)
     .bind(workspace_id)
@@ -82,7 +82,7 @@ pub async fn get_campaign(
     campaign_id: Uuid,
 ) -> Result<Campaign, AppError> {
     let campaign = sqlx::query_as::<_, Campaign>(
-        "SELECT * FROM campaigns WHERE id = $1 AND workspace_id = $2"
+        "SELECT * FROM campaigns WHERE id = $1 AND workspace_id = $2",
     )
     .bind(campaign_id)
     .bind(workspace_id)
@@ -110,7 +110,7 @@ pub async fn update_campaign(
              template_params = COALESCE($9, template_params),
              updated_at = NOW()
          WHERE id = $1 AND workspace_id = $2
-         RETURNING *"
+         RETURNING *",
     )
     .bind(campaign_id)
     .bind(workspace_id)
@@ -142,13 +142,16 @@ pub async fn launch_campaign(
         "SELECT * FROM contacts
          WHERE workspace_id = $1 AND status = 'ACTIVE'
          ORDER BY created_at ASC
-         LIMIT 50"
+         LIMIT 50",
     )
     .bind(workspace_id)
     .fetch_all(pool)
     .await?;
 
-    let message_body = format!("Notice from {}: Special opportunity available now.", campaign.name);
+    let message_body = format!(
+        "Notice from {}: Special opportunity available now.",
+        campaign.name
+    );
 
     for contact in contacts {
         if let Ok(res) = send_whatsapp_message(

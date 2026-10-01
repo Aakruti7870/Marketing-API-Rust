@@ -1,7 +1,7 @@
 pub mod jwt;
-pub mod password;
 pub mod middleware;
+pub mod password;
 
 pub use jwt::*;
-pub use password::*;
 pub use middleware::*;
+pub use password::*;

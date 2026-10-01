@@ -156,7 +156,6 @@ pub struct AiAgentChatResponse {
     pub model: String,
 }
 
-
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct AiAgentChannelConnection {
     pub id: Uuid,

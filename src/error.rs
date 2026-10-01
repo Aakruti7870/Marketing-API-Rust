@@ -43,10 +43,18 @@ impl IntoResponse for AppError {
                 tracing::error!("Database query failed: {:?}", err);
                 if let sqlx::Error::RowNotFound = err {
                     (StatusCode::NOT_FOUND, "Resource not found".to_string())
-                } else if err.to_string().contains("duplicate key") || err.to_string().contains("unique constraint") {
-                    (StatusCode::CONFLICT, "Resource conflict or duplicate key".to_string())
+                } else if err.to_string().contains("duplicate key")
+                    || err.to_string().contains("unique constraint")
+                {
+                    (
+                        StatusCode::CONFLICT,
+                        "Resource conflict or duplicate key".to_string(),
+                    )
                 } else {
-                    (StatusCode::INTERNAL_SERVER_ERROR, "Database transaction failed".to_string())
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        "Database transaction failed".to_string(),
+                    )
                 }
             }
             AppError::Validation(msg) => (StatusCode::UNPROCESSABLE_ENTITY, msg.clone()),
@@ -58,7 +66,10 @@ impl IntoResponse for AppError {
             AppError::ExternalService(msg) => (StatusCode::BAD_GATEWAY, msg.clone()),
             AppError::Internal(err) => {
                 tracing::error!("Internal server error: {:?}", err);
-                (StatusCode::INTERNAL_SERVER_ERROR, "An unexpected server error occurred".to_string())
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "An unexpected server error occurred".to_string(),
+                )
             }
         };
 

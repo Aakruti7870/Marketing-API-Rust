@@ -10,7 +10,10 @@ pub struct AuthenticatedUser(pub Claims);
 impl FromRequestParts<AppState> for AuthenticatedUser {
     type Rejection = AppError;
 
-    async fn from_request_parts(parts: &mut Parts, state: &AppState) -> Result<Self, Self::Rejection> {
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &AppState,
+    ) -> Result<Self, Self::Rejection> {
         let auth_header = parts
             .headers
             .get("Authorization")
@@ -18,7 +21,9 @@ impl FromRequestParts<AppState> for AuthenticatedUser {
             .ok_or_else(|| AppError::Unauthorized("Missing Authorization header".to_string()))?;
 
         if !auth_header.starts_with("Bearer ") {
-            return Err(AppError::Unauthorized("Malformed Authorization header".to_string()));
+            return Err(AppError::Unauthorized(
+                "Malformed Authorization header".to_string(),
+            ));
         }
 
         let token = &auth_header["Bearer ".len()..];

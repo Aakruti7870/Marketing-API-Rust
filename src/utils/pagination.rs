@@ -34,7 +34,11 @@ pub struct PaginationMeta {
 
 impl PaginationMeta {
     pub fn new(total: i64, page: i64, limit: i64) -> Self {
-        let total_pages = if limit > 0 { (total as f64 / limit as f64).ceil() as i64 } else { 1 };
+        let total_pages = if limit > 0 {
+            (total as f64 / limit as f64).ceil() as i64
+        } else {
+            1
+        };
         Self {
             page,
             limit,

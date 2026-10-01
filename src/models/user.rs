@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
-use std::fmt;
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
+use std::fmt;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

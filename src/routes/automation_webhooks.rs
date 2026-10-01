@@ -1,5 +1,10 @@
-use crate::{error::AppError,state::AppState,services::automation_service};
-use axum::{extract::{Path,State},http::{HeaderMap,StatusCode},response::IntoResponse,Json};
+use crate::{error::AppError, services::automation_service, state::AppState};
+use axum::{
+    extract::{Path, State},
+    http::{HeaderMap, StatusCode},
+    response::IntoResponse,
+    Json,
+};
 use serde_json::Value;
 use sqlx::Row;
 use uuid::Uuid;
@@ -15,9 +20,19 @@ pub async fn handle(
         .ok_or_else(|| AppError::NotFound("Webhook automation not found".into()))?;
     let wid: Uuid = row.try_get("workspace_id")?;
     let secret: String = row.try_get("secret")?;
-    if !secret.is_empty() && headers.get("x-automation-secret").and_then(|v| v.to_str().ok()) != Some(secret.as_str()) {
-        return Err(AppError::Unauthorized("Invalid automation webhook secret".into()));
+    if !secret.is_empty()
+        && headers
+            .get("x-automation-secret")
+            .and_then(|v| v.to_str().ok())
+            != Some(secret.as_str())
+    {
+        return Err(AppError::Unauthorized(
+            "Invalid automation webhook secret".into(),
+        ));
     }
     let run_id = automation_service::trigger(&s, id, wid, "WEBHOOK", payload).await?;
-    Ok((StatusCode::ACCEPTED, Json(serde_json::json!({"accepted":true,"run_id":run_id}))))
+    Ok((
+        StatusCode::ACCEPTED,
+        Json(serde_json::json!({"accepted":true,"run_id":run_id})),
+    ))
 }

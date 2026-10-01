@@ -17,7 +17,10 @@ use uuid::Uuid;
 pub fn routes(state: AppState) -> Router {
     Router::new()
         .route("/", get(list_contacts).post(create_contact))
-        .route("/:id", get(get_contact).put(update_contact).delete(delete_contact))
+        .route(
+            "/:id",
+            get(get_contact).put(update_contact).delete(delete_contact),
+        )
         .with_state(state)
 }
 
@@ -49,7 +52,8 @@ async fn get_contact(
     tenant: TenantContext,
     Path(contact_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
-    let contact = contact_service::get_contact(&state.pool, tenant.workspace_id, contact_id).await?;
+    let contact =
+        contact_service::get_contact(&state.pool, tenant.workspace_id, contact_id).await?;
     Ok(json_success(contact, "Contact retrieved"))
 }
 
@@ -70,7 +74,8 @@ async fn update_contact(
     Json(dto): Json<UpdateContactDto>,
 ) -> Result<impl IntoResponse, AppError> {
     require_workspace_roles(&tenant.workspace_role, &["OWNER", "ADMIN", "MEMBER"])?;
-    let contact = contact_service::update_contact(&state.pool, tenant.workspace_id, contact_id, dto).await?;
+    let contact =
+        contact_service::update_contact(&state.pool, tenant.workspace_id, contact_id, dto).await?;
     Ok(json_success(contact, "Contact updated"))
 }
 
@@ -81,5 +86,8 @@ async fn delete_contact(
 ) -> Result<impl IntoResponse, AppError> {
     require_workspace_roles(&tenant.workspace_role, &["OWNER", "ADMIN"])?;
     contact_service::delete_contact(&state.pool, tenant.workspace_id, contact_id).await?;
-    Ok(json_success(serde_json::json!({ "deleted": true }), "Contact deleted"))
+    Ok(json_success(
+        serde_json::json!({ "deleted": true }),
+        "Contact deleted",
+    ))
 }

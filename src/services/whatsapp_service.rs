@@ -21,7 +21,8 @@ pub async fn send_whatsapp_message(
     template_name: Option<&str>,
 ) -> Result<WhatsAppSendResult, AppError> {
     // 1. Check if Simulation Mode is enabled or Meta credentials are absent
-    let has_credentials = config.whatsapp_phone_number_id.is_some() && config.whatsapp_access_token.is_some();
+    let has_credentials =
+        config.whatsapp_phone_number_id.is_some() && config.whatsapp_access_token.is_some();
     if config.whatsapp_simulation_mode {
         let simulated_wamid = format!(
             "wamid.HBgL{}FQIAERgS{}",
@@ -83,7 +84,10 @@ pub async fn send_whatsapp_message(
 
     if !response.status().is_success() {
         let err_text = response.text().await.unwrap_or_default();
-        return Err(AppError::ExternalService(format!("Meta WhatsApp error: {}", err_text)));
+        return Err(AppError::ExternalService(format!(
+            "Meta WhatsApp error: {}",
+            err_text
+        )));
     }
 
     let resp_json: serde_json::Value = response
