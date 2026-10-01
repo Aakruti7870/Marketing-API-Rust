@@ -13,7 +13,7 @@ pub mod webhooks;
 pub mod workspaces;
 
 use crate::state::AppState;
-use axum::{routing::get, Json, Router};
+use axum::{extract::Extension, http::StatusCode, routing::get, Json, Router};
 use serde_json::json;
 
 pub fn create_api_router(state: AppState) -> Router {
@@ -48,12 +48,34 @@ pub fn create_api_router(state: AppState) -> Router {
         )
 }
 
-async fn health_check() -> Json<serde_json::Value> {
-    Json(json!({
-        "status": "healthy",
-        "service": "GOLD-e GrowthOS Marketing API",
-        "runtime": "Rust / Axum / SQLx",
-        "version": "1.0.0",
-        "timestamp": chrono::Utc::now().to_rfc3339(),
-    }))
+async fn health_check(
+    Extension(state): Extension<AppState>,
+) -> (StatusCode, Json<serde_json::Value>) {
+    let redis_status = match state.redis.as_ref() {
+        Some(connection) => {
+            let mut connection = connection.clone();
+            match redis::cmd("PING").query_async::<String>(&mut connection).await {
+                Ok(response) if response == "PONG" => "healthy",
+                _ => "unhealthy",
+            }
+        }
+        None => "disabled",
+    };
+    let healthy = redis_status != "unhealthy";
+    let status_code = if healthy {
+        StatusCode::OK
+    } else {
+        StatusCode::SERVICE_UNAVAILABLE
+    };
+    (
+        status_code,
+        Json(json!({
+            "status": if healthy { "healthy" } else { "degraded" },
+            "service": "GOLD-e GrowthOS Marketing API",
+            "runtime": "Rust / Axum / SQLx",
+            "version": "1.0.0",
+            "dependencies": { "redis": redis_status },
+            "timestamp": chrono::Utc::now().to_rfc3339(),
+        })),
+    )
 }
