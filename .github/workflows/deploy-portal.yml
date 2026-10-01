@@ -59,8 +59,8 @@ jobs:
           REGION="ap-south-1"
           BUCKET="golde-growthos-portal-deploy-352285845269-ap-south-1"
           KEY="releases/__GITHUB_SHA__.tar.gz"
-          RELEASE="/tmp/golde-portal-release-${GITHUB_SHA}"
-          ARCHIVE="/tmp/golde-portal-${GITHUB_SHA}.tar.gz"
+          RELEASE="/tmp/golde-portal-release-__GITHUB_SHA__"
+          ARCHIVE="/tmp/golde-portal-__GITHUB_SHA__.tar.gz"
           BACKUP="/opt/golde-portal.previous"
 
           aws s3 cp "s3://${BUCKET}/${KEY}" "${ARCHIVE}" --region "${REGION}"
