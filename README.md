@@ -14,12 +14,17 @@ Built specifically to power the **GOLD-e GrowthOS Command Center** with multi-te
 | **HTTP Framework** | Axum 0.7 | Fast, modular web framework built on Tokio & Tower |
 | **Async Runtime** | Tokio 1.38 | Multi-threaded work-stealing event loop |
 | **Database & ORM** | SQLx 0.7 + PostgreSQL | Pure async driver, compile-time verified SQL queries |
+| **Cache / Coordination** | Redis 7 + TLS + AUTH | Production startup validates authenticated TLS connectivity before accepting traffic |
 | **Authentication** | JWT (HS256) | Access token (15m) + Refresh token (7d) family rotation |
 | **Multi-Tenancy** | TenantContext Extractor | Header (`x-workspace-id`) or query param scoped isolation |
 | **Messaging** | WhatsApp Cloud API | Meta Graph API v20.0 with automatic simulated fallback |
 | **Deployment** | Docker & AWS EC2 | Multi-stage slim Docker image, systemd unit, Nginx proxy |
 
 ---
+
+## Production Redis configuration
+
+In production, set `REDIS_URL` to the private ElastiCache primary endpoint using TLS and an AUTH token, for example `rediss://:REDACTED_TOKEN@your-private-endpoint:6379/`. Store the actual token in the deployment secret store; never commit it. The API performs a Redis `PING` during startup and refuses to start if the URL, TLS connection, or authentication check fails. Redis is optional only for non-production environments. This establishes the secure client connection; distributed job queues and dedicated workers are a separate implementation step.
 
 ## 🚀 Quickstart
 

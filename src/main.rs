@@ -37,8 +37,32 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .map_err(|e| format!("Migration error: {}", e))?;
     info!(" Database migrations applied successfully.");
 
-    // 4. Create App State and Router
-    let state = AppState::new(pool, config.clone());
+    // 4. Connect to Redis over TLS and verify authentication before serving traffic.
+    let redis_connection = if let Some(redis_url) = config.redis_url.as_deref() {
+        let client = redis::Client::open(redis_url)
+            .map_err(|e| format!("Invalid REDIS_URL configuration: {}", e))?;
+        let mut connection = redis::aio::ConnectionManager::new(client)
+            .await
+            .map_err(|e| format!("Redis connection failed: {}", e))?;
+        let pong: String = redis::cmd("PING")
+            .query_async(&mut connection)
+            .await
+            .map_err(|e| format!("Redis authentication/health check failed: {}", e))?;
+        if pong != "PONG" {
+            return Err(format!("Unexpected Redis health-check response: {}", pong).into());
+        }
+        info!("Redis TLS connection and AUTH verified.");
+        Some(connection)
+    } else {
+        if config.environment.eq_ignore_ascii_case("production") {
+            return Err("REDIS_URL is required in production".into());
+        }
+        info!("REDIS_URL not set; Redis is disabled for this non-production run.");
+        None
+    };
+
+    // 5. Create App State and Router
+    let state = AppState::new(pool, config.clone()).with_redis(redis_connection);
     let router = app(state.clone());
 
     // Native automation scheduler: durable schedules are stored in PostgreSQL.
@@ -56,7 +80,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
 
-    // 5. Start HTTP Server
+    // 6. Start HTTP Server
     let addr: SocketAddr = format!("{}:{}", config.host, config.port).parse()?;
     info!(" Listening on http://{}", addr);
     info!(

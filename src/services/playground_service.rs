@@ -869,6 +869,7 @@ pub async fn handle_button_action(
                 pool: pool.clone(),
                 config: std::sync::Arc::new(config.clone()),
                 http_client: Client::new(),
+                redis: None,
             };
             let run_id=crate::services::automation_service::trigger(
                 &state,automation_id,workspace_id,"WEBHOOK",
