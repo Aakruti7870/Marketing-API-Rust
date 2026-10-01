@@ -81,7 +81,12 @@ impl Config {
                 );
             }
             let redis = redis_url.as_deref().unwrap_or_default();
-            if !redis.starts_with("rediss://") || !redis.contains('@') {
+            let has_auth_credentials = redis
+                .strip_prefix("rediss://")
+                .and_then(|rest| rest.split_once('@'))
+                .map(|(credentials, _)| !credentials.is_empty())
+                .unwrap_or(false);
+            if !redis.starts_with("rediss://") || !has_auth_credentials {
                 return Err(
                     "REDIS_URL must use rediss:// TLS and include Redis AUTH credentials in production"
                         .to_string(),
