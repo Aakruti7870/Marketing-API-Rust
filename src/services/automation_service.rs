@@ -137,8 +137,18 @@ pub async fn trigger(
     trigger_type: &str,
     payload: Value,
 ) -> Result<Uuid, AppError> {
+    // Keep route/scheduler aliases compatible with the canonical trigger types
+    // persisted by the workflow builder (MANUAL_TRIGGER, WEBHOOK_TRIGGER,
+    // and SCHEDULE_TRIGGER).
+    let canonical_trigger_type = match trigger_type {
+        "MANUAL" => "MANUAL_TRIGGER",
+        "WEBHOOK" => "WEBHOOK_TRIGGER",
+        "SCHEDULE" => "SCHEDULE_TRIGGER",
+        other => other,
+    };
+
     let ok = sqlx::query("SELECT 1 FROM automations WHERE id=$1 AND workspace_id=$2 AND status='PUBLISHED' AND EXISTS(SELECT 1 FROM automation_triggers t WHERE t.automation_id=$1 AND t.trigger_type=$3 AND t.enabled)")
-        .bind(automation_id).bind(workspace_id).bind(trigger_type).fetch_optional(&state.pool).await?;
+        .bind(automation_id).bind(workspace_id).bind(canonical_trigger_type).fetch_optional(&state.pool).await?;
     if ok.is_none() {
         return Err(AppError::NotFound(
             "Published automation trigger not found".into(),
@@ -146,7 +156,7 @@ pub async fn trigger(
     }
 
     let row=sqlx::query("INSERT INTO automation_runs(automation_id,workspace_id,trigger_type,trigger_payload,variables) VALUES($1,$2,$3,$4,$4) RETURNING id")
-        .bind(automation_id).bind(workspace_id).bind(trigger_type).bind(&payload).fetch_one(&state.pool).await?;
+        .bind(automation_id).bind(workspace_id).bind(canonical_trigger_type).bind(&payload).fetch_one(&state.pool).await?;
     let run_id: Uuid = row.try_get("id")?;
     if let Err(e) = execute_run(state, run_id, automation_id, payload).await {
         let msg = e.to_string();
