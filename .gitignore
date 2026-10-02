@@ -90,3 +90,9 @@ gold-e/target/debug/deps/whatsapp_test-8a9cfdea60f56ea5
 gold-e/target/debug/deps/auth_test-c1b27090ce989a2c
 gold-e/target/debug/golde-marketing-api
 gold-e/target/debug/libgolde_marketing_api.rlib
+.env
+.env.*
+*.env
+credentials.json
+*.key
+.credentials
