@@ -1,3 +1,4 @@
+
 pub mod agents;
 pub mod analytics;
 pub mod auth;
@@ -18,7 +19,6 @@ use serde_json::json;
 
 pub fn create_api_router(state: AppState) -> Router {
     Router::new()
-        .layer(axum::Extension(state.clone()))
         .route("/", get(custom_domains::landing))
         .route("/health", get(health_check))
         .nest("/api/v1/auth", auth::routes(state.clone()))
@@ -42,10 +42,11 @@ pub fn create_api_router(state: AppState) -> Router {
         )
         .nest(
             "/api/v1/automation-webhooks",
-            axum::Router::new()
+            Router::new()
                 .route("/:id", axum::routing::post(automation_webhooks::handle))
                 .with_state(state.clone()),
         )
+        .layer(Extension(state))
 }
 
 async fn health_check(
@@ -64,12 +65,14 @@ async fn health_check(
         }
         None => "disabled",
     };
+
     let healthy = redis_status != "unhealthy";
     let status_code = if healthy {
         StatusCode::OK
     } else {
         StatusCode::SERVICE_UNAVAILABLE
     };
+
     (
         status_code,
         Json(json!({
@@ -77,7 +80,9 @@ async fn health_check(
             "service": "GOLD-e GrowthOS Marketing API",
             "runtime": "Rust / Axum / SQLx",
             "version": "1.0.0",
-            "dependencies": { "redis": redis_status },
+            "dependencies": {
+                "redis": redis_status
+            },
             "timestamp": chrono::Utc::now().to_rfc3339(),
         })),
     )
