@@ -1,40 +1,43 @@
 # GOLD-e GrowthOS Marketing API — PRD / Working Memory
 
 ## Problem statement
-Finish the existing GOLD-e GrowthOS Marketing API + portal (do NOT replace it).
-Backend: Rust/Axum/SQLx. DB: PostgreSQL. Prod API: api.goldetech.com. Portal: goldetech.com / www.goldetech.com. Deploy: AWS EC2 + GitHub Actions.
-Preserve backend, DB, migrations, env, features. Don't print/request secrets. Don't deploy unverified. WhatsApp deferred.
+Finish + consolidate the existing GOLD-e GrowthOS Marketing API + portal (do NOT replace).
+Backend Rust/Axum/SQLx, DB PostgreSQL, Prod API api.goldetech.com, portal goldetech.com/www.
+Preserve backend/DB/migrations/env/features. No secrets in git. No unverified deploy. WhatsApp deferred.
 
 ## Repo facts
-- GitHub: Aakruti7870/Marketing-API-Rust, default branch `main` @ e0b6ed0 (source of truth, confirmed).
-- Scope confirmed: audit/fix `main` only; 5 unmerged feature branches left untouched.
-- Delivery mode confirmed: commit to local branch `fix/production-completion`, hand owner the SHA + runbook; owner pushes & deploys (sandbox has no GitHub push / AWS / prod-DB access).
+- GitHub Aakruti7870/Marketing-API-Rust, default `main` @ e0b6ed0 (source of truth).
+- Working clone at /app/gold-e (nested git, remote=origin HTTPS, unauthenticated → no push creds).
 
-## Architecture
-- `src/` Axum routes + services (auth, workspaces, contacts, campaigns, messages, agents, public_agents, analytics, webhooks, automations, custom_domains, playground). JWT HS256 access(15m)+refresh(7d) rotation. Tenant via x-workspace-id / JWT claim.
-- `migrations/0001-0008` additive, idempotent (sqlx::migrate! at boot).
-- `frontend/` React 19 + Vite 8, axios client with 401 refresh-rotation interceptor.
-- CI `.github/workflows/ci.yml` (fmt→migrate→clippy -D warnings→test→release build). Deploy: `deploy-ec2.yml`, `deploy-portal.yml` (npm build → S3 → SSM).
+## Consolidation outcome (2026-10-02)
+- Inventoried ALL branches via NET diff vs CURRENT main (not merge-base — critical).
+- Finding: every feature branch (release-hardening, redis, business-owner-replies, ui-clean, ui-portal)
+  is a snapshot of an OLDER main; net diffs are massive DELETIONS; main already contains their features
+  (Redis auth, CORS hardening, custom domains, playground, owner-reply at agents.rs:40, deploy/rollback,
+  automation engine). Incorporating any would REGRESS. All DEFERRED, left untouched on remote.
+- playground-contact-import / production-deploy-rollback-arch / chat = 0 ahead (already merged).
+- ONLY clean net-additive, current-main-based work = my `fix/production-completion` (portal lint fix + docs).
 
-## Work done (2026-10-02)
-- Full audit vs live prod (API /health healthy, portal 200, redis healthy).
-- Validated on real toolchain: cargo fmt ✓, migrations ✓, clippy -D warnings ✓, cargo test 5/5 ✓, cargo build --release ✓, yarn install/lint/build ✓.
-- Live API e2e smoke on local server+PostgreSQL: register/login/me/refresh/logout, workspaces, dashboard, contacts create, campaigns/agents/templates/automations/playground list, unauth→401. All pass.
-- **Only blocker found & fixed**: portal `yarn lint` 16 errors → 0 errors/0 warnings (unused imports/vars, empty catch blocks, react-hooks effect rules) in App.jsx + Playground.jsx. No runtime change. Backend/DB/env untouched.
-- Branch `fix/production-completion`: commit 5f16b30 (lint fix) + 8fe6bb4 (runbook). HEAD = 8fe6bb4ea57df0bdabb622294228d3cb71850b05.
-- Runbook: docs/PRODUCTION_COMPLETION_RUNBOOK.md (audit, validation, deploy, rollback, limitations).
+## Release branch
+- `release/golde-growthos-production-completion`, final SHA = 516647f922d336ae826216257d27b862a136e570.
+- = origin/main (e0b6ed0) + 3 commits: 5f16b30 (lint fix), 8fe6bb4 (runbook), 516647f (consolidation report).
+- Net vs main: frontend/src/App.jsx, frontend/src/Playground.jsx, docs/PRODUCTION_COMPLETION_RUNBOOK.md, docs/CONSOLIDATION_REPORT.md.
+- Backup ref: refs/backup/pre-consolidation-20261002175541.
 
-## Integration honesty ledger
-- Custom domain verify: REAL (Google DoH CNAME check).
-- AI agent chat: REAL OpenAI-compatible call; needs AI_API_KEY (clear 400 if unset).
-- WhatsApp: simulation default; real path gated on Meta creds + approval (DEFERRED).
-- Redis: REAL, prod requires authenticated rediss://, PING at boot.
+## Validation (release branch, real toolchain) — all PASS
+cargo fmt --check ✓ | clippy -D warnings ✓ | cargo test 5/5 ✓ | cargo build --release ✓
+migrations 0001-0008 on disposable DB ✓ (29 tables, numbering preserved)
+npm install ✓ | npm run lint ✓ (0) | npm run build ✓ (1947 modules)
+Contracts: all actively-used frontend paths match Rust routes (automationsApi.pause unused, UI-guarded).
+Diff scanned: no secrets/.env/keys/node_modules/dist. package-lock.json preserved (minimal CI lockfile).
 
-## Blocked verifications (no creds in sandbox)
-GitHub push, AWS/EC2 deploy, prod DB connection, prod authenticated smoke. Owner executes via runbook §5.
+## Integration ledger
+Custom domain verify: REAL (Google DoH CNAME). AI chat: REAL, needs AI_API_KEY. WhatsApp: sim default (deferred). Redis: REAL authenticated rediss:// in prod.
 
-## Backlog / next
-- P0: owner push branch → green CI → merge → deploy portal; re-run authenticated prod smoke.
-- P1: set AI_API_KEY in prod secret store to enable real agent completions.
-- P2 (deferred): WhatsApp Cloud API live creds + WHATSAPP_SIMULATION_MODE=false.
-- Consider: reconcile the 5 unmerged feature branches in a later scope.
+## Blocked (no creds in sandbox)
+GitHub push (fatal: could not read Username), AWS/EC2 deploy, prod DB, prod authenticated smoke.
+
+## Next
+- P0: user pushes release branch (git push -u origin ... OR Emergent Save to GitHub), open PR→main, confirm CI green.
+- Separate gate: deploy only after CI green + backups + explicit approval + post-deploy smoke.
+- P1: AI_API_KEY in prod. P2 deferred: WhatsApp live creds.
