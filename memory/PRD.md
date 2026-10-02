@@ -37,7 +37,15 @@ Custom domain verify: REAL (Google DoH CNAME). AI chat: REAL, needs AI_API_KEY. 
 ## Blocked (no creds in sandbox)
 GitHub push (fatal: could not read Username), AWS/EC2 deploy, prod DB, prod authenticated smoke.
 
+## Recovery (2026-10-02, second session)
+- Original work INTACT — nothing lost. fix/production-completion @ 8fe6bb4, release branch @ 516647f, backup ref, all present.
+- Remote main verified unchanged: e0b6ed0 (fetch OK, 0/0 divergence).
+- Created NEW branch `fix/production-completion-recovery` from genuine main @ e0b6ed0; cherry-picked the 2 original commits → 48a1466 (App.jsx+Playground.jsx lint fix) + 96b70b8 (runbook). Final SHA = 96b70b80d059ca121f9db1130aea43f49d63187c.
+- Diff vs main: exactly 3 files (+174/−10): docs/PRODUCTION_COMPLETION_RUNBOOK.md, frontend/src/App.jsx, frontend/src/Playground.jsx. Backend/migrations/workflows/env/lockfiles untouched.
+- Gates re-run on branch: fmt ✓, clippy -D warnings ✓, cargo test 5/5 ✓, release build ✓, npm install ✓, lint 0 problems ✓, build ✓.
+- PUSH BLOCKED (no GitHub creds, fatal: could not read Username). Branch intact locally.
+
 ## Next
-- P0: user pushes release branch (git push -u origin ... OR Emergent Save to GitHub), open PR→main, confirm CI green.
+- P0: user pushes fix/production-completion-recovery (git push -u origin ... OR Save to GitHub), review diff, open PR→main.
 - Separate gate: deploy only after CI green + backups + explicit approval + post-deploy smoke.
 - P1: AI_API_KEY in prod. P2 deferred: WhatsApp live creds.
