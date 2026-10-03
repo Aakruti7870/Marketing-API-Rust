@@ -15,7 +15,7 @@ pub async fn handle(
     headers: HeaderMap,
     Json(payload): Json<Value>,
 ) -> Result<impl IntoResponse, AppError> {
-    let row = sqlx::query("SELECT workspace_id, COALESCE(config->>'secret','') AS secret FROM automations a JOIN automation_triggers t ON t.automation_id=a.id WHERE a.id=$1 AND a.status='PUBLISHED' AND t.trigger_type='WEBHOOK' AND t.enabled LIMIT 1")
+    let row = sqlx::query("SELECT workspace_id, COALESCE(config->>'secret','') AS secret FROM automations a JOIN automation_triggers t ON t.automation_id=a.id WHERE a.id=$1 AND a.status='PUBLISHED' AND t.trigger_type='WEBHOOK_TRIGGER' AND t.enabled LIMIT 1")
         .bind(id).fetch_optional(&s.pool).await?
         .ok_or_else(|| AppError::NotFound("Webhook automation not found".into()))?;
     let wid: Uuid = row.try_get("workspace_id")?;
