@@ -54,10 +54,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         info!("Redis TLS connection and AUTH verified.");
         Some(connection)
     } else {
-        if config.environment.eq_ignore_ascii_case("production") {
-            return Err("REDIS_URL is required in production".into());
-        }
-        info!("REDIS_URL not set; Redis is disabled for this non-production run.");
+        // Redis is optional until the distributed queue/worker subsystem is enabled.
+        // Config::from_env validates TLS scheme and AUTH credentials whenever
+        // REDIS_URL is supplied in production.
+        info!("REDIS_URL not set; Redis integration is disabled.");
         None
     };
 
