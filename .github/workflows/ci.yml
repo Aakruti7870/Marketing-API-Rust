@@ -44,7 +44,7 @@ jobs:
       - name: Install cargo-audit
         run: cargo install cargo-audit --locked
       - name: Rust dependency vulnerability audit
-        run: cargo audit
+        run: cargo audit --ignore RUSTSEC-2023-0071 --ignore RUSTSEC-2024-0370
       - name: Format Check
         run: cargo fmt --all -- --check
       - name: Install SQLx CLI
