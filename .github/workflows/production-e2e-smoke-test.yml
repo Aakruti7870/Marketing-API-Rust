@@ -94,7 +94,7 @@ jobs:
             '{
               name:$name,
               description:"Automated production E2E smoke test",
-              triggers:[{trigger_type:"MANUAL",config:{},enabled:true}],
+              triggers:[{trigger_type:"MANUAL_TRIGGER",config:{},enabled:true}],
               nodes:[
                 {node_key:"trigger",node_type:"MANUAL_TRIGGER",name:"Manual Trigger",config:{},position:{}},
                 {node_key:"set",node_type:"SET",name:"Set Smoke Value",config:{values:{smoke_test:"passed"}},position:{}}
@@ -151,7 +151,7 @@ jobs:
             '{
               name:$name,
               description:"Automated production webhook smoke test",
-              triggers:[{trigger_type:"WEBHOOK",config:{},enabled:true}],
+              triggers:[{trigger_type:"WEBHOOK_TRIGGER",config:{},enabled:true}],
               nodes:[
                 {node_key:"trigger",node_type:"WEBHOOK_TRIGGER",name:"Webhook Trigger",config:{},position:{}},
                 {node_key:"set",node_type:"SET",name:"Set Webhook Value",config:{values:{webhook_test:"passed"}},position:{}}
@@ -204,7 +204,7 @@ jobs:
             '{
               name:$name,
               description:"Automated production approval smoke test",
-              triggers:[{trigger_type:"MANUAL",config:{},enabled:true}],
+              triggers:[{trigger_type:"MANUAL_TRIGGER",config:{},enabled:true}],
               nodes:[
                 {node_key:"trigger",node_type:"MANUAL_TRIGGER",name:"Manual Trigger",config:{},position:{}},
                 {node_key:"approval",node_type:"APPROVAL",name:"Approval Gate",config:{},position:{}},
