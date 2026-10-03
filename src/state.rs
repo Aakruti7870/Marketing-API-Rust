@@ -17,7 +17,12 @@ impl AppState {
         Self {
             pool,
             config: Arc::new(config),
-            http_client: Client::builder().build().unwrap_or_default(),
+            http_client: Client::builder()
+                .connect_timeout(std::time::Duration::from_secs(5))
+                .timeout(std::time::Duration::from_secs(20))
+                .redirect(reqwest::redirect::Policy::none())
+                .build()
+                .unwrap_or_default(),
             redis: None,
         }
     }

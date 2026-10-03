@@ -855,6 +855,8 @@ dependencies = [
  "chrono",
  "csv",
  "dotenvy",
+ "hex",
+ "hmac",
  "http-body-util",
  "hyper",
  "jsonwebtoken",

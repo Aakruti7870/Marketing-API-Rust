@@ -20,12 +20,17 @@ pub async fn handle(
         .ok_or_else(|| AppError::NotFound("Webhook automation not found".into()))?;
     let wid: Uuid = row.try_get("workspace_id")?;
     let secret: String = row.try_get("secret")?;
-    if !secret.is_empty()
-        && headers
-            .get("x-automation-secret")
-            .and_then(|v| v.to_str().ok())
-            != Some(secret.as_str())
-    {
+    if secret.trim().is_empty() {
+        return Err(AppError::Internal(anyhow::anyhow!(
+            "Automation webhook secret is not configured"
+        )));
+    }
+
+    let supplied_secret = headers
+        .get("x-automation-secret")
+        .and_then(|v| v.to_str().ok());
+
+    if supplied_secret != Some(secret.as_str()) {
         return Err(AppError::Unauthorized(
             "Invalid automation webhook secret".into(),
         ));

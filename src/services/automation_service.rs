@@ -11,6 +11,81 @@ use uuid::Uuid;
 const MAX_NODES: usize = 100;
 const MAX_RUN_SECONDS: u64 = 300;
 
+fn validate_http_request_url(raw: &str) -> Result<url::Url, AppError> {
+    let parsed = url::Url::parse(raw)
+        .map_err(|_| AppError::BadRequest("Invalid HTTP_REQUEST URL".into()))?;
+
+    if parsed.scheme() != "https" && parsed.scheme() != "http" {
+        return Err(AppError::BadRequest(
+            "HTTP_REQUEST only permits HTTP or HTTPS URLs".into(),
+        ));
+    }
+
+    if !parsed.username().is_empty() || parsed.password().is_some() {
+        return Err(AppError::BadRequest(
+            "HTTP_REQUEST URLs must not contain credentials".into(),
+        ));
+    }
+
+    let host = parsed
+        .host_str()
+        .unwrap_or_default()
+        .trim_end_matches('.')
+        .trim_start_matches('[')
+        .trim_end_matches(']')
+        .to_ascii_lowercase();
+    let blocked = host == "localhost"
+        || host.ends_with(".localhost")
+        || host.ends_with(".local")
+        || host == "metadata.google.internal"
+        || host == "metadata"
+        || host
+            .parse::<std::net::IpAddr>()
+            .map(|ip| match ip {
+                std::net::IpAddr::V4(ip) => {
+                    ip.is_loopback()
+                        || ip.is_private()
+                        || ip.is_link_local()
+                        || ip.is_unspecified()
+                        || ip.is_broadcast()
+                        || ip.octets()[0] == 0
+                        || ip.octets()[0] >= 224
+                }
+                std::net::IpAddr::V6(ip) => {
+                    ip.to_ipv4_mapped().is_some_and(|v4| {
+                        v4.is_loopback()
+                            || v4.is_private()
+                            || v4.is_link_local()
+                            || v4.is_unspecified()
+                            || v4.is_broadcast()
+                            || v4.octets()[0] == 0
+                            || v4.octets()[0] >= 224
+                    }) || ip.is_loopback()
+                        || ip.is_unspecified()
+                        || ip.is_unique_local()
+                        || ip.is_unicast_link_local()
+                        || ip.to_ipv4_mapped().is_some_and(|v4| {
+                            v4.is_loopback()
+                                || v4.is_private()
+                                || v4.is_link_local()
+                                || v4.is_unspecified()
+                                || v4.is_broadcast()
+                                || v4.octets()[0] == 0
+                                || v4.octets()[0] >= 224
+                        })
+                }
+            })
+            .unwrap_or(false);
+
+    if blocked {
+        return Err(AppError::BadRequest(
+            "HTTP_REQUEST cannot target local or private addresses".into(),
+        ));
+    }
+
+    Ok(parsed)
+}
+
 pub async fn create_automation(
     state: &AppState,
     workspace_id: Uuid,
@@ -301,6 +376,7 @@ async fn execute_node(
                 .and_then(Value::as_str)
                 .ok_or_else(|| AppError::BadRequest("HTTP_REQUEST requires config.url".into()))?;
             let url = interpolate_str(url, vars);
+            let parsed_url = validate_http_request_url(&url)?;
             let mut req = match cfg
                 .get("method")
                 .and_then(Value::as_str)
@@ -308,11 +384,16 @@ async fn execute_node(
                 .to_uppercase()
                 .as_str()
             {
-                "POST" => state.http_client.post(&url),
-                "PUT" => state.http_client.put(&url),
-                "PATCH" => state.http_client.patch(&url),
-                "DELETE" => state.http_client.delete(&url),
-                _ => state.http_client.get(&url),
+                "POST" => state.http_client.post(parsed_url.clone()),
+                "PUT" => state.http_client.put(parsed_url.clone()),
+                "PATCH" => state.http_client.patch(parsed_url.clone()),
+                "DELETE" => state.http_client.delete(parsed_url.clone()),
+                "GET" => state.http_client.get(parsed_url.clone()),
+                _ => {
+                    return Err(AppError::BadRequest(
+                        "Unsupported HTTP_REQUEST method".into(),
+                    ))
+                }
             };
             if let Some(headers) = cfg.get("headers").and_then(Value::as_object) {
                 for (k, v) in headers {
@@ -579,4 +660,40 @@ pub async fn get_run(
     Ok(
         json!({"id":run.try_get::<Uuid,_>("id")?,"automation_id":run.try_get::<Uuid,_>("automation_id")?,"status":run.try_get::<String,_>("status")?,"trigger_type":run.try_get::<Option<String>,_>("trigger_type")?,"trigger_payload":run.try_get::<Value,_>("trigger_payload")?,"variables":run.try_get::<Value,_>("variables")?,"error":run.try_get::<Option<String>,_>("error")?,"steps":arr}),
     )
+}
+
+#[cfg(test)]
+mod http_request_url_security_tests {
+    use super::validate_http_request_url;
+
+    #[test]
+    fn allows_public_http_and_https_urls() {
+        assert!(validate_http_request_url("https://example.com/path").is_ok());
+        assert!(validate_http_request_url("http://example.com/path").is_ok());
+    }
+
+    #[test]
+    fn rejects_local_private_and_metadata_targets() {
+        for url in [
+            "http://localhost/",
+            "http://127.0.0.1/",
+            "http://10.0.0.1/",
+            "http://172.16.0.1/",
+            "http://192.168.1.1/",
+            "http://169.254.169.254/",
+            "http://metadata.google.internal/",
+            "http://[::1]/",
+            "http://[fc00::1]/",
+        ] {
+            assert!(validate_http_request_url(url).is_err(), "accepted {url}");
+        }
+    }
+
+    #[test]
+    fn rejects_unsupported_schemes_and_url_credentials() {
+        assert!(validate_http_request_url("file:///etc/passwd").is_err());
+        assert!(validate_http_request_url("ftp://example.com/").is_err());
+        assert!(validate_http_request_url("https://user:pass@example.com/").is_err());
+        assert!(validate_http_request_url("not-a-url").is_err());
+    }
 }
