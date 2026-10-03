@@ -22,6 +22,8 @@ jsonwebtoken = "9.3"
 uuid = { version = "1.8", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 
+# Pin url to a version that pulls idna >= 1.0.3 and removes RUSTSEC-2024-0421.
+url = "2.5.7"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 redis = { version = "0.32", features = ["tokio-rustls-comp", "connection-manager"] }
 
