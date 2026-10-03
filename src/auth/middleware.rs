@@ -28,6 +28,19 @@ impl FromRequestParts<AppState> for AuthenticatedUser {
 
         let token = &auth_header["Bearer ".len()..];
         let claims = verify_token(token, &state.config.jwt_access_secret)?;
+
+        let is_active = sqlx::query_scalar::<_, bool>("SELECT is_active FROM users WHERE id = $1")
+            .bind(claims.sub)
+            .fetch_optional(&state.pool)
+            .await
+            .map_err(AppError::Database)?;
+
+        if is_active != Some(true) {
+            return Err(AppError::Unauthorized(
+                "Invalid authentication token".to_string(),
+            ));
+        }
+
         Ok(AuthenticatedUser(claims))
     }
 }
