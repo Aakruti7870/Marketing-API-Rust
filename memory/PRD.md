@@ -37,6 +37,15 @@ Custom domain verify: REAL (Google DoH CNAME). AI chat: REAL, needs AI_API_KEY. 
 ## Blocked (no creds in sandbox)
 GitHub push (fatal: could not read Username), AWS/EC2 deploy, prod DB, prod authenticated smoke.
 
+## Consolidation onto feat/redis-production-integration (2026-10-02, third session)
+- Checked out target branch locally from origin/feat/redis-production-integration @ 03f3653.
+- Cherry-picked ALL 3 Emergent commits: 97d4d75 (lint fix — 1 conflict in App.jsx SET-node inspector, resolved by keeping THIS branch's existing UI since branch's older block has no JSON.parse/catch; no functionality removed), 1e0954d (runbook), 0b84f83 (consolidation report).
+- Final SHA = 0b84f8382a05833f0e64b056c2096bd762f684db. Files vs remote target: docs/CONSOLIDATION_REPORT.md, docs/PRODUCTION_COMPLETION_RUNBOOK.md, frontend/src/App.jsx, frontend/src/Playground.jsx.
+- Validated on branch (fresh disposable DB 'redisbranch', migrations 0001-0008 all ok, 29 tables): fmt ✓, cargo check ✓, clippy -D warnings ✓, cargo test 5/5 ✓, release build ✓, npm lint 0 ✓, npm build ✓. package-lock.json npm-rewrite reverted. diff --check OK. Secret scan clean.
+- Redis connectivity test: BLOCKED (no Redis service in sandbox); Redis code unchanged, config-gated, production health shows redis healthy.
+- PUSH BLOCKED again (fatal: could not read Username — no GitHub creds in sandbox). Branch ready locally at 0b84f83.
+- NOTE: pod restart wiped PostgreSQL role/db; recreated golde role + redisbranch DB for validation.
+
 ## Recovery (2026-10-02, second session)
 - Original work INTACT — nothing lost. fix/production-completion @ 8fe6bb4, release branch @ 516647f, backup ref, all present.
 - Remote main verified unchanged: e0b6ed0 (fetch OK, 0/0 divergence).
