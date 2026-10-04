@@ -4,8 +4,8 @@ use crate::config::Config;
 use crate::error::AppError;
 use crate::models::{User, UserProfile};
 use chrono::{Duration, Utc};
-use sha2::{Digest, Sha256};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -38,10 +38,14 @@ pub struct RegistrationResponse {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct VerifyEmailDto { pub token: String }
+pub struct VerifyEmailDto {
+    pub token: String,
+}
 
 #[derive(Debug, Deserialize)]
-pub struct ResendVerificationDto { pub email: String }
+pub struct ResendVerificationDto {
+    pub email: String,
+}
 
 #[derive(Debug, Serialize)]
 pub struct AuthResponse {
@@ -113,7 +117,11 @@ pub async fn register(
 
     tx.commit().await?;
 
-    let email_sent = match crate::services::email_service::send_verification_email(config, &email, &raw_token).await {
+    let email_sent = match crate::services::email_service::send_verification_email(
+        config, &email, &raw_token,
+    )
+    .await
+    {
         Ok(()) => true,
         Err(error) => {
             tracing::error!(user_id = %user_id, error = %error, "Verification email could not be sent during registration");
@@ -121,7 +129,11 @@ pub async fn register(
         }
     };
 
-    Ok(RegistrationResponse { email, email_verification_required: true, email_sent })
+    Ok(RegistrationResponse {
+        email,
+        email_verification_required: true,
+        email_sent,
+    })
 }
 
 pub async fn login(
@@ -145,9 +157,13 @@ pub async fn login(
         ));
     }
     let email_verified: bool = sqlx::query_scalar("SELECT email_verified FROM users WHERE id = $1")
-        .bind(user.id).fetch_one(pool).await?;
+        .bind(user.id)
+        .fetch_one(pool)
+        .await?;
     if !email_verified {
-        return Err(AppError::Forbidden("Please verify your email before signing in.".to_string()));
+        return Err(AppError::Forbidden(
+            "Please verify your email before signing in.".to_string(),
+        ));
     }
 
     let member_record = sqlx::query!(
@@ -164,7 +180,9 @@ pub async fn login(
     sqlx::query!(
         "INSERT INTO refresh_tokens (id, token, user_id, family, expires_at) VALUES ($1, $2, $3, $4, $5)",
         Uuid::new_v4(), refresh_token_string, user.id, family, expires_at
-    ).execute(pool).await?;
+    )
+    .execute(pool)
+    .await?;
 
     let access_token =
         generate_access_token(user.id, &user.email, &user.role, Some(ws_id), config)?;
@@ -271,7 +289,6 @@ pub async fn get_me(pool: &PgPool, user_id: Uuid) -> Result<UserProfile, AppErro
     Ok(user.into())
 }
 
-
 pub async fn verify_email(pool: &PgPool, dto: VerifyEmailDto) -> Result<(), AppError> {
     let token_hash = hex::encode(Sha256::digest(dto.token.trim().as_bytes()));
     let mut tx = pool.begin().await?;
@@ -280,29 +297,60 @@ pub async fn verify_email(pool: &PgPool, dto: VerifyEmailDto) -> Result<(), AppE
          WHERE token_hash = $1 AND used_at IS NULL AND expires_at > NOW()
          RETURNING user_id",
         token_hash
-    ).fetch_optional(&mut *tx).await?
-     .ok_or_else(|| AppError::BadRequest("This verification link is invalid or expired. Request a new email.".to_string()))?;
+    )
+    .fetch_optional(&mut *tx)
+    .await?
+    .ok_or_else(|| {
+        AppError::BadRequest(
+            "This verification link is invalid or expired. Request a new email.".to_string(),
+        )
+    })?;
 
-    sqlx::query!("UPDATE users SET email_verified = true, updated_at = NOW() WHERE id = $1", record.user_id)
-        .execute(&mut *tx).await?;
-    sqlx::query!("UPDATE email_verification_tokens SET used_at = COALESCE(used_at, NOW()) WHERE user_id = $1 AND used_at IS NULL", record.user_id)
-        .execute(&mut *tx).await?;
+    sqlx::query!(
+        "UPDATE users SET email_verified = true, updated_at = NOW() WHERE id = $1",
+        record.user_id
+    )
+    .execute(&mut *tx)
+    .await?;
+    sqlx::query!(
+        "UPDATE email_verification_tokens SET used_at = COALESCE(used_at, NOW()) WHERE user_id = $1 AND used_at IS NULL",
+        record.user_id
+    )
+    .execute(&mut *tx)
+    .await?;
     tx.commit().await?;
     Ok(())
 }
 
-pub async fn resend_verification(pool: &PgPool, config: &Config, dto: ResendVerificationDto) -> Result<(), AppError> {
+pub async fn resend_verification(
+    pool: &PgPool,
+    config: &Config,
+    dto: ResendVerificationDto,
+) -> Result<(), AppError> {
     let email = dto.email.trim().to_lowercase();
-    let user = sqlx::query!("SELECT id, email_verified FROM users WHERE email = $1", email)
-        .fetch_optional(pool).await?;
+    let user = sqlx::query!(
+        "SELECT id, email_verified FROM users WHERE email = $1",
+        email
+    )
+    .fetch_optional(pool)
+    .await?;
     // Same response for unknown, verified, and rate-limited addresses.
-    let Some(user) = user else { return Ok(()); };
-    if user.email_verified { return Ok(()); }
+    let Some(user) = user else {
+        return Ok(());
+    };
+    if user.email_verified {
+        return Ok(());
+    }
 
     let recently_sent: bool = sqlx::query_scalar(
         "SELECT EXISTS(SELECT 1 FROM email_verification_tokens WHERE user_id = $1 AND created_at > NOW() - INTERVAL '60 seconds')"
-    ).bind(user.id).fetch_one(pool).await?;
-    if recently_sent { return Ok(()); }
+    )
+    .bind(user.id)
+    .fetch_one(pool)
+    .await?;
+    if recently_sent {
+        return Ok(());
+    }
 
     let raw_token = format!("{}{}", Uuid::new_v4().simple(), Uuid::new_v4().simple());
     let token_hash = hex::encode(Sha256::digest(raw_token.as_bytes()));
@@ -312,7 +360,9 @@ pub async fn resend_verification(pool: &PgPool, config: &Config, dto: ResendVeri
         Uuid::new_v4(), user.id, token_hash, expires_at
     ).execute(pool).await?;
 
-    if let Err(error) = crate::services::email_service::send_verification_email(config, &email, &raw_token).await {
+    if let Err(error) =
+        crate::services::email_service::send_verification_email(config, &email, &raw_token).await
+    {
         tracing::error!(user_id = %user.id, error = %error, "Verification resend email failed");
     }
     Ok(())
