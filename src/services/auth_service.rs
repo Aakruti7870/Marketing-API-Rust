@@ -74,7 +74,7 @@ pub async fn register(
     let user_id = Uuid::new_v4();
     let mut tx = pool.begin().await?;
 
-    let user = sqlx::query_as::<_, User>(
+    let _user = sqlx::query_as::<_, User>(
         "INSERT INTO users (id, email, password_hash, first_name, last_name, phone, role, email_verified)
          VALUES ($1, $2, $3, $4, $5, $6, 'USER', false) RETURNING *",
     )
