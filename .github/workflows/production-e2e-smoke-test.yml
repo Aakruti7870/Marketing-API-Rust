@@ -20,12 +20,17 @@ jobs:
       BASE_URL: https://api.goldetech.com
       SMOKE_EMAIL: ${{ secrets.SMOKE_TEST_EMAIL }}
       SMOKE_PASSWORD: ${{ secrets.SMOKE_TEST_PASSWORD }}
+      WEBHOOK_SECRET: ${{ secrets.WEBHOOK_SECRET }}
 
     steps:
       - name: Validate smoke-test credentials
         shell: bash
         run: |
           set -euo pipefail
+          if [[ -z "${WEBHOOK_SECRET}" ]]; then
+            echo "::error::Missing WEBHOOK_SECRET repository secret."
+            exit 1
+          fi
           if [[ -z "${SMOKE_EMAIL}" || -z "${SMOKE_PASSWORD}" ]]; then
             echo "::error::Missing SMOKE_TEST_EMAIL or SMOKE_TEST_PASSWORD repository secrets."
             echo "Create a dedicated production smoke-test account and store its credentials as GitHub Actions secrets."
@@ -148,10 +153,11 @@ jobs:
 
           jq -n \
             --arg name "PROD E2E Webhook ${GITHUB_RUN_ID}" \
+            --arg webhook_secret "${WEBHOOK_SECRET}" \
             '{
               name:$name,
               description:"Automated production webhook smoke test",
-              triggers:[{trigger_type:"WEBHOOK_TRIGGER",config:{},enabled:true}],
+              triggers:[{trigger_type:"WEBHOOK_TRIGGER",config:{secret:$webhook_secret},enabled:true}],
               nodes:[
                 {node_key:"trigger",node_type:"WEBHOOK_TRIGGER",name:"Webhook Trigger",config:{},position:{}},
                 {node_key:"set",node_type:"SET",name:"Set Webhook Value",config:{values:{webhook_test:"passed"}},position:{}}
@@ -180,6 +186,7 @@ jobs:
           curl --fail --silent --show-error \
             -X POST \
             -H "Content-Type: application/json" \
+            -H "x-automation-secret: ${WEBHOOK_SECRET}" \
             -d '{"source":"github-smoke-test","webhook_test":"pass"}' \
             "${BASE_URL}/api/v1/automation-webhooks/${WEBHOOK_AUTOMATION_ID}" > webhook-run.json
 
