@@ -168,9 +168,13 @@ impl Config {
         let public_base_url =
             env::var("PUBLIC_BASE_URL").unwrap_or_else(|_| "https://api.goldetech.com".to_string());
         let channel_encryption_key = env::var("CHANNEL_ENCRYPTION_KEY").ok();
-        let resend_api_key = env::var("RESEND_API_KEY").ok().filter(|v| !v.trim().is_empty());
-        let email_from = env::var("EMAIL_FROM").unwrap_or_else(|_| "GOLD-e GrowthOS <noreply@kryso.dev>".to_string());
-        let frontend_base_url = env::var("FRONTEND_BASE_URL").unwrap_or_else(|_| "https://goldetech.com".to_string());
+        let resend_api_key = env::var("RESEND_API_KEY")
+            .ok()
+            .filter(|v| !v.trim().is_empty());
+        let email_from = env::var("EMAIL_FROM")
+            .unwrap_or_else(|_| "GOLD-e GrowthOS <noreply@kryso.dev>".to_string());
+        let frontend_base_url =
+            env::var("FRONTEND_BASE_URL").unwrap_or_else(|_| "https://goldetech.com".to_string());
 
         Ok(Self {
             port,
