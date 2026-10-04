@@ -28,6 +28,9 @@ pub struct Config {
     pub ai_temperature: f32,
     pub public_base_url: String,
     pub channel_encryption_key: Option<String>,
+    pub resend_api_key: Option<String>,
+    pub email_from: String,
+    pub frontend_base_url: String,
 }
 
 impl Config {
@@ -165,6 +168,9 @@ impl Config {
         let public_base_url =
             env::var("PUBLIC_BASE_URL").unwrap_or_else(|_| "https://api.goldetech.com".to_string());
         let channel_encryption_key = env::var("CHANNEL_ENCRYPTION_KEY").ok();
+        let resend_api_key = env::var("RESEND_API_KEY").ok().filter(|v| !v.trim().is_empty());
+        let email_from = env::var("EMAIL_FROM").unwrap_or_else(|_| "GOLD-e GrowthOS <noreply@kryso.dev>".to_string());
+        let frontend_base_url = env::var("FRONTEND_BASE_URL").unwrap_or_else(|_| "https://goldetech.com".to_string());
 
         Ok(Self {
             port,
@@ -192,6 +198,9 @@ impl Config {
             ai_temperature,
             public_base_url,
             channel_encryption_key,
+            resend_api_key,
+            email_from,
+            frontend_base_url,
         })
     }
 }
