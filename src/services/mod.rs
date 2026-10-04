@@ -4,6 +4,7 @@ pub mod auth_service;
 pub mod automation_service;
 pub mod campaign_service;
 pub mod contact_service;
+pub mod email_service;
 pub mod message_service;
 pub mod playground_service;
 pub mod whatsapp_service;

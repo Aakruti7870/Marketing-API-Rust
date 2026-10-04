@@ -29,18 +29,28 @@ function formatNumber(value) {
   return new Intl.NumberFormat("en-IN", { notation:"compact", maximumFractionDigits:1 }).format(Number(value));
 }
 
-function Login({ onLogin }) {
+function Login({ onLogin, verificationStatus }) {
   const [mode, setMode] = useState("login");
   const [form, setForm] = useState({ email:"", password:"", first_name:"", last_name:"", workspace_name:"" });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [pendingEmail, setPendingEmail] = useState("");
+  const [resendBusy, setResendBusy] = useState(false);
+  const [notice, setNotice] = useState("");
 
   const submit = async (e) => {
-    e.preventDefault(); setBusy(true); setError("");
+    e.preventDefault(); setBusy(true); setError(""); setNotice("");
     try {
-      const response = mode === "login"
-        ? await authApi.login({ email:form.email, password:form.password })
-        : await authApi.register(form);
+      if (mode === "register") {
+        const response = await authApi.register(form);
+        const data = unwrap(response);
+        setPendingEmail(form.email.trim());
+        setNotice(data?.email_sent === false
+          ? "Your account was created, but the email could not be sent. Use Resend verification email after server email configuration is fixed."
+          : "Account created. Check your inbox and spam folder for the verification link. Verify your email before signing in.");
+        return;
+      }
+      const response = await authApi.login({ email:form.email, password:form.password });
       const data = unwrap(response);
       const token = data?.tokens?.access_token;
       if (!token) throw new Error("Authentication succeeded but no access token was returned.");
@@ -54,6 +64,18 @@ function Login({ onLogin }) {
     } finally { setBusy(false); }
   };
 
+  const resendVerification = async () => {
+    const email = (pendingEmail || form.email).trim();
+    if (!email) { setError("Enter your email address first."); return; }
+    setResendBusy(true); setError(""); setNotice("");
+    try {
+      await authApi.resendVerification(email);
+      setNotice("If this account needs verification, a new email will arrive shortly. Check your inbox and spam folder.");
+    } catch (err) {
+      setError(err?.response?.data?.error || err?.message || "Unable to request verification email.");
+    } finally { setResendBusy(false); }
+  };
+
   return <main className="auth-screen">
     <div className="auth-orbit orbit-one" /><div className="auth-orbit orbit-two" />
     <section className="auth-card">
@@ -63,7 +85,9 @@ function Login({ onLogin }) {
         <h1>{mode === "login" ? "Welcome back." : "Build your growth workspace."}</h1>
         <p>{mode === "login" ? "Sign in to your AI-powered marketing command center." : "Create a workspace and start orchestrating campaigns with AI."}</p>
       </div>
+      {verificationStatus && <div className={`alert ${verificationStatus.ok ? "success" : "error"}`}>{verificationStatus.message}</div>}
       {error && <div className="alert error">{error}</div>}
+      {notice && <div className="alert success">{notice}</div>}
       <form onSubmit={submit} className="auth-form">
         {mode === "register" && <div className="form-grid">
           <label>First name<input required value={form.first_name} onChange={e=>setForm({...form,first_name:e.target.value})}/></label>
@@ -74,7 +98,8 @@ function Login({ onLogin }) {
         {mode === "register" && <label>Workspace name <span className="muted">(optional)</span><input value={form.workspace_name} onChange={e=>setForm({...form,workspace_name:e.target.value})} placeholder="My Growth Workspace"/></label>}
         <button className="primary-btn" disabled={busy}>{busy ? "Connecting…" : mode==="login" ? "Enter GrowthOS" : "Create workspace"}<ChevronRight size={18}/></button>
       </form>
-      <button className="text-btn" onClick={()=>{setMode(mode==="login"?"register":"login");setError("")}}>
+      {(pendingEmail || mode === "login") && <button className="text-btn" disabled={resendBusy} onClick={resendVerification}>{resendBusy ? "Requesting…" : "Resend verification email"}</button>}
+      <button className="text-btn" onClick={()=>{setMode(mode==="login"?"register":"login");setError("");setNotice("")}}>
         {mode==="login" ? "Create a new workspace" : "Already have an account? Sign in"}
       </button>
       <div className="auth-footer"><span>Secure workspace isolation</span><span>JWT protected API</span></div>
@@ -733,13 +758,28 @@ export default function App() {
   const [user,setUser]=useState(()=>{try{return JSON.parse(localStorage.getItem("golde_user"))}catch{return null}});
   const [page,setPage]=useState("dashboard");
   const [checking,setChecking]=useState(!!localStorage.getItem("golde_access_token"));
+  const [verificationStatus,setVerificationStatus]=useState(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get("verify_email_token");
+    if (!token) return;
+    window.history.replaceState({}, document.title, window.location.pathname);
+    authApi.verifyEmail(token)
+      .then(() => {
+        ["golde_access_token","golde_refresh_token","golde_user","golde_workspace_id"].forEach(k => localStorage.removeItem(k));
+        setUser(null);
+        setVerificationStatus({ ok:true, message:"Email verified successfully. You can now sign in." });
+      })
+      .catch(err => setVerificationStatus({ ok:false, message:err?.response?.data?.error || "This verification link is invalid or expired. Request a new verification email." }));
+  }, []);
 
   useEffect(()=>{ if(!localStorage.getItem("golde_access_token")){setChecking(false);return;} authApi.me().then(r=>setUser(unwrap(r))).catch(()=>{localStorage.removeItem("golde_access_token");setUser(null)}).finally(()=>setChecking(false)); },[]);
 
   const logout=async()=>{try{await authApi.logout(localStorage.getItem("golde_refresh_token"))}catch{} ["golde_access_token","golde_refresh_token","golde_user","golde_workspace_id"].forEach(k=>localStorage.removeItem(k));setUser(null);setPage("dashboard")};
 
   if(checking) return <div className="boot-screen"><div className="boot-logo">G</div><span>Loading GrowthOS</span></div>;
-  if(!user) return <Login onLogin={setUser}/>;
+  if(!user) return <Login onLogin={setUser} verificationStatus={verificationStatus}/>;
 
   let content;
   if(page==="dashboard") content=<Dashboard setPage={setPage}/>;
