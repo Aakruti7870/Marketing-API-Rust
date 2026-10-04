@@ -241,9 +241,13 @@ pub async fn refresh(
         .await?;
 
     let email_verified: bool = sqlx::query_scalar("SELECT email_verified FROM users WHERE id = $1")
-        .bind(user.id).fetch_one(pool).await?;
+        .bind(user.id)
+        .fetch_one(pool)
+        .await?;
     if !email_verified {
-        return Err(AppError::Forbidden("Please verify your email before signing in.".to_string()));
+        return Err(AppError::Forbidden(
+            "Please verify your email before signing in.".to_string(),
+        ));
     }
 
     let member_record = sqlx::query!(
