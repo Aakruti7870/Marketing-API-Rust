@@ -50,7 +50,9 @@ api.interceptors.response.use(
       !originalRequest._retry &&
       !originalRequest.url.includes("/auth/login") &&
       !originalRequest.url.includes("/auth/register") &&
-      !originalRequest.url.includes("/auth/refresh")
+      !originalRequest.url.includes("/auth/refresh") &&
+      !originalRequest.url.includes("/auth/verify-email") &&
+      !originalRequest.url.includes("/auth/resend-verification")
     ) {
       if (isRefreshing) {
         return new Promise((resolve, reject) => {
@@ -120,6 +122,8 @@ export const unwrap = (response) => response?.data?.data ?? response?.data;
 export const authApi = {
   login: (payload) => api.post("/auth/login", payload),
   register: (payload) => api.post("/auth/register", payload),
+  verifyEmail: (token) => api.post("/auth/verify-email", { token }),
+  resendVerification: (email) => api.post("/auth/resend-verification", { email }),
   me: () => api.get("/auth/me"),
   refresh: (refreshToken) => api.post("/auth/refresh", { refresh_token: refreshToken }),
   logout: (refreshToken) => api.post("/auth/logout", refreshToken ? { refresh_token: refreshToken } : {}),
