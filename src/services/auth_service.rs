@@ -347,7 +347,7 @@ pub async fn resend_verification(
     }
 
     let recently_sent: bool = sqlx::query_scalar(
-        "SELECT EXISTS(SELECT 1 FROM email_verification_tokens WHERE user_id = $1 AND created_at > NOW() - INTERVAL '60 seconds')"
+        "SELECT EXISTS(SELECT 1 FROM email_verification_tokens WHERE user_id = $1 AND created_at > NOW() - INTERVAL '5 minutes')"
     )
     .bind(user.id)
     .fetch_one(pool)
