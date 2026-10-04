@@ -4,6 +4,7 @@ use crate::config::Config;
 use crate::error::AppError;
 use crate::models::{User, UserProfile};
 use chrono::{Duration, Utc};
+use sha2::{Digest, Sha256};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -30,6 +31,19 @@ pub struct RefreshTokenDto {
 }
 
 #[derive(Debug, Serialize)]
+pub struct RegistrationResponse {
+    pub email: String,
+    pub email_verification_required: bool,
+    pub email_sent: bool,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct VerifyEmailDto { pub token: String }
+
+#[derive(Debug, Deserialize)]
+pub struct ResendVerificationDto { pub email: String }
+
+#[derive(Debug, Serialize)]
 pub struct AuthResponse {
     pub user: UserProfile,
     pub tokens: AuthTokens,
@@ -40,7 +54,7 @@ pub async fn register(
     pool: &PgPool,
     config: &Config,
     dto: RegisterDto,
-) -> Result<AuthResponse, AppError> {
+) -> Result<RegistrationResponse, AppError> {
     let email = dto.email.trim().to_lowercase();
     let existing = sqlx::query_as::<_, User>("SELECT * FROM users WHERE email = $1")
         .bind(&email)
@@ -57,8 +71,8 @@ pub async fn register(
     let mut tx = pool.begin().await?;
 
     let user = sqlx::query_as::<_, User>(
-        "INSERT INTO users (id, email, password_hash, first_name, last_name, phone, role)
-         VALUES ($1, $2, $3, $4, $5, $6, 'USER') RETURNING *",
+        "INSERT INTO users (id, email, password_hash, first_name, last_name, phone, role, email_verified)
+         VALUES ($1, $2, $3, $4, $5, $6, 'USER', false) RETURNING *",
     )
     .bind(user_id)
     .bind(&email)
@@ -89,29 +103,25 @@ pub async fn register(
         Uuid::new_v4(), ws_id, user_id
     ).execute(&mut *tx).await?;
 
-    let family = Uuid::new_v4();
-    let refresh_token_string = Uuid::new_v4().to_string();
-    let expires_at = Utc::now() + Duration::seconds(config.jwt_refresh_expiration_seconds);
-
+    let raw_token = format!("{}{}", Uuid::new_v4().simple(), Uuid::new_v4().simple());
+    let token_hash = hex::encode(Sha256::digest(raw_token.as_bytes()));
+    let token_expires_at = Utc::now() + Duration::minutes(30);
     sqlx::query!(
-        "INSERT INTO refresh_tokens (id, token, user_id, family, expires_at) VALUES ($1, $2, $3, $4, $5)",
-        Uuid::new_v4(), refresh_token_string, user_id, family, expires_at
+        "INSERT INTO email_verification_tokens (id, user_id, token_hash, expires_at) VALUES ($1, $2, $3, $4)",
+        Uuid::new_v4(), user_id, token_hash, token_expires_at
     ).execute(&mut *tx).await?;
 
     tx.commit().await?;
 
-    let access_token =
-        generate_access_token(user.id, &user.email, &user.role, Some(ws_id), config)?;
-    Ok(AuthResponse {
-        user: user.into(),
-        tokens: AuthTokens {
-            access_token,
-            refresh_token: refresh_token_string,
-            token_type: "Bearer".to_string(),
-            expires_in: config.jwt_access_expiration_seconds,
-        },
-        workspace_id: ws_id,
-    })
+    let email_sent = match crate::services::email_service::send_verification_email(config, &email, &raw_token).await {
+        Ok(()) => true,
+        Err(error) => {
+            tracing::error!(user_id = %user_id, error = %error, "Verification email could not be sent during registration");
+            false
+        }
+    };
+
+    Ok(RegistrationResponse { email, email_verification_required: true, email_sent })
 }
 
 pub async fn login(
@@ -133,6 +143,11 @@ pub async fn login(
         return Err(AppError::Unauthorized(
             "Invalid email or password".to_string(),
         ));
+    }
+    let email_verified: bool = sqlx::query_scalar("SELECT email_verified FROM users WHERE id = $1")
+        .bind(user.id).fetch_one(pool).await?;
+    if !email_verified {
+        return Err(AppError::Forbidden("Please verify your email before signing in.".to_string()));
     }
 
     let member_record = sqlx::query!(
@@ -207,6 +222,12 @@ pub async fn refresh(
         .fetch_one(pool)
         .await?;
 
+    let email_verified: bool = sqlx::query_scalar("SELECT email_verified FROM users WHERE id = $1")
+        .bind(user.id).fetch_one(pool).await?;
+    if !email_verified {
+        return Err(AppError::Forbidden("Please verify your email before signing in.".to_string()));
+    }
+
     let member_record = sqlx::query!(
         "SELECT workspace_id FROM workspace_members WHERE user_id = $1 ORDER BY joined_at ASC LIMIT 1",
         user.id
@@ -248,4 +269,51 @@ pub async fn get_me(pool: &PgPool, user_id: Uuid) -> Result<UserProfile, AppErro
         .await?
         .ok_or_else(|| AppError::NotFound("User not found".to_string()))?;
     Ok(user.into())
+}
+
+
+pub async fn verify_email(pool: &PgPool, dto: VerifyEmailDto) -> Result<(), AppError> {
+    let token_hash = hex::encode(Sha256::digest(dto.token.trim().as_bytes()));
+    let mut tx = pool.begin().await?;
+    let record = sqlx::query!(
+        "UPDATE email_verification_tokens SET used_at = NOW()
+         WHERE token_hash = $1 AND used_at IS NULL AND expires_at > NOW()
+         RETURNING user_id",
+        token_hash
+    ).fetch_optional(&mut *tx).await?
+     .ok_or_else(|| AppError::BadRequest("This verification link is invalid or expired. Request a new email.".to_string()))?;
+
+    sqlx::query!("UPDATE users SET email_verified = true, updated_at = NOW() WHERE id = $1", record.user_id)
+        .execute(&mut *tx).await?;
+    sqlx::query!("UPDATE email_verification_tokens SET used_at = COALESCE(used_at, NOW()) WHERE user_id = $1 AND used_at IS NULL", record.user_id)
+        .execute(&mut *tx).await?;
+    tx.commit().await?;
+    Ok(())
+}
+
+pub async fn resend_verification(pool: &PgPool, config: &Config, dto: ResendVerificationDto) -> Result<(), AppError> {
+    let email = dto.email.trim().to_lowercase();
+    let user = sqlx::query!("SELECT id, email_verified FROM users WHERE email = $1", email)
+        .fetch_optional(pool).await?;
+    // Same response for unknown, verified, and rate-limited addresses.
+    let Some(user) = user else { return Ok(()); };
+    if user.email_verified { return Ok(()); }
+
+    let recently_sent: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM email_verification_tokens WHERE user_id = $1 AND created_at > NOW() - INTERVAL '60 seconds')"
+    ).bind(user.id).fetch_one(pool).await?;
+    if recently_sent { return Ok(()); }
+
+    let raw_token = format!("{}{}", Uuid::new_v4().simple(), Uuid::new_v4().simple());
+    let token_hash = hex::encode(Sha256::digest(raw_token.as_bytes()));
+    let expires_at = Utc::now() + Duration::minutes(30);
+    sqlx::query!(
+        "INSERT INTO email_verification_tokens (id, user_id, token_hash, expires_at) VALUES ($1, $2, $3, $4)",
+        Uuid::new_v4(), user.id, token_hash, expires_at
+    ).execute(pool).await?;
+
+    if let Err(error) = crate::services::email_service::send_verification_email(config, &email, &raw_token).await {
+        tracing::error!(user_id = %user.id, error = %error, "Verification resend email failed");
+    }
+    Ok(())
 }
