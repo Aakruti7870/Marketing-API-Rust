@@ -1,6 +1,6 @@
 use crate::auth::AuthenticatedUser;
 use crate::error::AppError;
-use crate::services::auth_service::{self, LoginDto, RefreshTokenDto, RegisterDto};
+use crate::services::auth_service::{self, LoginDto, RefreshTokenDto, RegisterDto, ResendVerificationDto, VerifyEmailDto};
 use crate::state::AppState;
 use crate::utils::response::json_success;
 use axum::{
@@ -14,6 +14,8 @@ use serde::Deserialize;
 pub fn routes(state: AppState) -> Router {
     Router::new()
         .route("/register", post(register))
+        .route("/verify-email", post(verify_email))
+        .route("/resend-verification", post(resend_verification))
         .route("/login", post(login))
         .route("/refresh", post(refresh))
         .route("/logout", post(logout))
@@ -26,7 +28,7 @@ async fn register(
     Json(dto): Json<RegisterDto>,
 ) -> Result<impl IntoResponse, AppError> {
     let res = auth_service::register(&state.pool, &state.config, dto).await?;
-    Ok(json_success(res, "User registered successfully"))
+    Ok(json_success(res, "Account created. Verify your email before signing in."))
 }
 
 async fn login(
@@ -68,4 +70,18 @@ async fn get_me(
 ) -> Result<impl IntoResponse, AppError> {
     let user = auth_service::get_me(&state.pool, claims.sub).await?;
     Ok(json_success(user, "User profile fetched"))
+}
+
+
+async fn verify_email(State(state): State<AppState>, Json(dto): Json<VerifyEmailDto>) -> Result<impl IntoResponse, AppError> {
+    auth_service::verify_email(&state.pool, dto).await?;
+    Ok(json_success(serde_json::json!({ "verified": true }), "Email verified successfully"))
+}
+
+async fn resend_verification(State(state): State<AppState>, Json(dto): Json<ResendVerificationDto>) -> Result<impl IntoResponse, AppError> {
+    auth_service::resend_verification(&state.pool, &state.config, dto).await?;
+    Ok(json_success(
+        serde_json::json!({ "accepted": true }),
+        "If the account needs verification, an email will be sent shortly.",
+    ))
 }
