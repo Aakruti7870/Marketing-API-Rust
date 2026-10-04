@@ -35,7 +35,9 @@ pub async fn send_verification_email(
         .timeout(Duration::from_secs(10))
         .redirect(Policy::none())
         .build()
-        .map_err(|_| AppError::ExternalService("Unable to initialize email delivery".to_string()))?;
+        .map_err(|_| {
+            AppError::ExternalService("Unable to initialize email delivery".to_string())
+        })?;
     let response = client
         .post("https://api.resend.com/emails")
         .bearer_auth(api_key)
