@@ -29,15 +29,30 @@ impl FromRequestParts<AppState> for AuthenticatedUser {
         let token = &auth_header["Bearer ".len()..];
         let claims = verify_token(token, &state.config.jwt_access_secret)?;
 
-        let is_active = sqlx::query_scalar::<_, bool>("SELECT is_active FROM users WHERE id = $1")
-            .bind(claims.sub)
-            .fetch_optional(&state.pool)
-            .await
-            .map_err(AppError::Database)?;
+        // Enforce verification centrally for every protected route. Checking only
+        // during login/refresh is insufficient: a token issued earlier (or a
+        // stale session) must not access workspace creation or other APIs until
+        // the account's email is verified.
+        let account = sqlx::query_as::<_, (bool, bool)>(
+            "SELECT is_active, email_verified FROM users WHERE id = $1",
+        )
+        .bind(claims.sub)
+        .fetch_optional(&state.pool)
+        .await
+        .map_err(AppError::Database)?;
 
-        if is_active != Some(true) {
+        let (is_active, email_verified) = account
+            .ok_or_else(|| AppError::Unauthorized("Invalid authentication token".to_string()))?;
+
+        if !is_active {
             return Err(AppError::Unauthorized(
                 "Invalid authentication token".to_string(),
+            ));
+        }
+
+        if !email_verified {
+            return Err(AppError::Forbidden(
+                "Please verify your email before accessing this resource.".to_string(),
             ));
         }
 
