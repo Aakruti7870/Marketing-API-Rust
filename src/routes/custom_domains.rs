@@ -139,6 +139,10 @@ async fn verify_domain(
     tenant: TenantContext,
     Path(id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
+    // Domain verification changes the public availability of an agent domain.
+    // Restrict this mutation to workspace owners and admins.
+    require_workspace_roles(&tenant.workspace_role, &["OWNER", "ADMIN"])?;
+
     let domain = sqlx::query_as::<_, CustomDomain>(
         "SELECT * FROM ai_agent_custom_domains WHERE id=$1 AND workspace_id=$2",
     )
@@ -162,14 +166,16 @@ async fn verify_domain(
     let updated = sqlx::query_as::<_, CustomDomain>(
         "UPDATE ai_agent_custom_domains
          SET status=$1,last_dns_status=$2,updated_at=NOW()
-         WHERE id=$3
+         WHERE id=$3 AND workspace_id=$4
          RETURNING *",
     )
     .bind(status)
     .bind(if dns { "MATCH" } else { "NOT_MATCHED" })
     .bind(id)
-    .fetch_one(&state.pool)
-    .await?;
+    .bind(tenant.workspace_id)
+    .fetch_optional(&state.pool)
+    .await?
+    .ok_or_else(|| AppError::NotFound("Custom domain not found".into()))?;
 
     Ok(Json(json!({
         "success": true,
