@@ -14,6 +14,7 @@ permissions:
 
 jobs:
   deploy-portal:
+    environment: production
     runs-on: ubuntu-latest
     steps:
       - name: Checkout GOLD-e GrowthOS project
