@@ -26,6 +26,7 @@ pub fn routes(state: AppState) -> Router {
     Router::new()
         .route("/", get(list).post(create))
         .route("/:id/publish", post(publish))
+        .route("/:id/pause", post(pause))
         .route("/:id/run", post(run))
         .route("/runs/:run_id", get(get_run))
         .route("/runs/:run_id/steps/:step_id/approve", post(approve))
@@ -160,5 +161,17 @@ async fn remove(
     Ok(json_success(
         json!({"id":id,"deleted":true}),
         "Automation deleted",
+    ))
+}
+
+async fn pause(
+    State(s): State<AppState>,
+    t: TenantContext,
+    Path(id): Path<Uuid>,
+) -> Result<impl IntoResponse, AppError> {
+    require_workspace_roles(&t.workspace_role, &["OWNER", "ADMIN"])?;
+    Ok(json_success(
+        automation_service::pause_automation(&s, t.workspace_id, id).await?,
+        "Automation paused",
     ))
 }

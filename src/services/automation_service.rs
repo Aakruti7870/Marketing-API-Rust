@@ -662,6 +662,49 @@ pub async fn get_run(
     )
 }
 
+/// Pause an automation for a workspace and disable its scheduled trigger.
+/// Existing runs are left untouched; no new manual or scheduled runs can start
+/// until the automation is published again.
+pub async fn pause_automation(
+    state: &AppState,
+    workspace_id: Uuid,
+    id: Uuid,
+) -> Result<AutomationSummary, AppError> {
+    let mut tx = state.pool.begin().await?;
+    let row = sqlx::query(
+        "UPDATE automations
+         SET status='PAUSED', version=version+1, updated_at=NOW()
+         WHERE id=$1 AND workspace_id=$2
+         RETURNING id,name,description,status,version,created_at,updated_at",
+    )
+    .bind(id)
+    .bind(workspace_id)
+    .fetch_optional(&mut *tx)
+    .await?
+    .ok_or_else(|| AppError::NotFound("Automation not found".into()))?;
+
+    sqlx::query(
+        "UPDATE automation_schedules
+         SET enabled=false, updated_at=NOW()
+         WHERE automation_id=$1",
+    )
+    .bind(id)
+    .execute(&mut *tx)
+    .await?;
+
+    tx.commit().await?;
+
+    Ok(AutomationSummary {
+        id: row.try_get("id")?,
+        name: row.try_get("name")?,
+        description: row.try_get("description")?,
+        status: row.try_get("status")?,
+        version: row.try_get("version")?,
+        created_at: row.try_get("created_at")?,
+        updated_at: row.try_get("updated_at")?,
+    })
+}
+
 #[cfg(test)]
 mod http_request_url_security_tests {
     use super::validate_http_request_url;
