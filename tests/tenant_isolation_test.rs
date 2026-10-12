@@ -123,14 +123,18 @@ async fn workspace_scoped_contact_and_campaign_services_reject_cross_tenant_acce
     assert!(contact_service::get_contact(&pool, workspace_a, contact_b)
         .await
         .is_err());
-    assert!(campaign_service::get_campaign(&pool, workspace_a, campaign_b)
-        .await
-        .is_err());
+    assert!(
+        campaign_service::get_campaign(&pool, workspace_a, campaign_b)
+            .await
+            .is_err()
+    );
 
     // A cross-tenant delete must fail and leave the owner's record intact.
-    assert!(contact_service::delete_contact(&pool, workspace_a, contact_b)
-        .await
-        .is_err());
+    assert!(
+        contact_service::delete_contact(&pool, workspace_a, contact_b)
+            .await
+            .is_err()
+    );
     assert!(contact_service::get_contact(&pool, workspace_b, contact_b)
         .await
         .is_ok());
