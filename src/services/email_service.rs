@@ -25,8 +25,8 @@ pub async fn send_verification_email(
     let verify_url = format!("{base_url}/?verify_email_token={token}");
     let html = format!(
         "<div style=\"font-family:Arial,sans-serif;max-width:560px;margin:auto;color:#222\">\
-         <h2>Verify your GOLD-e GrowthOS email</h2>\
-         <p>Confirm this email address to activate your GrowthOS account.</p>\
+         <h2>Verify your Kryso email</h2>\
+         <p>Confirm this email address to activate your Kryso account.</p>\
          <p><a href=\"{verify_url}\" style=\"display:inline-block;padding:12px 20px;background:#6d43d8;color:#fff;text-decoration:none;border-radius:8px\">Verify email address</a></p>\
          <p>This link expires in 30 minutes and can only be used once.</p>\
          <p>If you did not create this account, you can ignore this message.</p></div>"
@@ -44,7 +44,7 @@ pub async fn send_verification_email(
         .json(&ResendEmail {
             from: &config.email_from,
             to: [recipient],
-            subject: "Verify your GOLD-e GrowthOS email",
+            subject: "Verify your Kryso email",
             html,
         })
         .send()
