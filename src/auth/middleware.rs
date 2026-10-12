@@ -41,9 +41,8 @@ impl FromRequestParts<AppState> for AuthenticatedUser {
         .await
         .map_err(AppError::Database)?;
 
-        let (is_active, email_verified) = account.ok_or_else(|| {
-            AppError::Unauthorized("Invalid authentication token".to_string())
-        })?;
+        let (is_active, email_verified) = account
+            .ok_or_else(|| AppError::Unauthorized("Invalid authentication token".to_string()))?;
 
         if !is_active {
             return Err(AppError::Unauthorized(
