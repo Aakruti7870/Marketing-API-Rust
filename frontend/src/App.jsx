@@ -12,6 +12,7 @@ import "./App.css";
 const NAV = [
   { id:"dashboard", label:"Command Center", icon:LayoutDashboard },
   { id:"playground", label:"Playground", icon:Sparkles },
+  { id:"contacts", label:"Contacts", icon:Users },
   { id:"campaigns", label:"Campaigns", icon:Target },
   { id:"messages", label:"WhatsApp", icon:MessageSquare },
   { id:"agents", label:"AI Agents", icon:Bot },
