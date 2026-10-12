@@ -5,7 +5,10 @@ on:
     branches: [main]
     paths:
       - "frontend/**"
-      - ".github/workflows/deploy-portal.yml"
+  workflow_run:
+    workflows: ["Deploy to AWS EC2 Production"]
+    types: [completed]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -14,6 +17,8 @@ permissions:
 
 jobs:
   deploy-portal:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    environment: production
     runs-on: ubuntu-latest
     steps:
       - name: Checkout GOLD-e GrowthOS project
