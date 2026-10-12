@@ -85,11 +85,9 @@ async fn agent_services_cannot_read_update_or_delete_another_workspaces_agent() 
     assert!(!agents_a.iter().any(|agent| agent.id == agent_b));
     assert_eq!(agents_a.len(), 1);
 
-    assert!(
-        agent_service::get_agent(&pool, workspace_a, agent_b)
-            .await
-            .is_err()
-    );
+    assert!(agent_service::get_agent(&pool, workspace_a, agent_b)
+        .await
+        .is_err());
 
     let update_result = agent_service::update_agent(
         &pool,
@@ -111,16 +109,12 @@ async fn agent_services_cannot_read_update_or_delete_another_workspaces_agent() 
     .await;
     assert!(update_result.is_err());
 
-    assert!(
-        agent_service::delete_agent(&pool, workspace_a, agent_b)
-            .await
-            .is_err()
-    );
-    assert!(
-        agent_service::get_agent(&pool, workspace_b, agent_b)
-            .await
-            .is_ok()
-    );
+    assert!(agent_service::delete_agent(&pool, workspace_a, agent_b)
+        .await
+        .is_err());
+    assert!(agent_service::get_agent(&pool, workspace_b, agent_b)
+        .await
+        .is_ok());
 
     // Workspaces cascade-delete their own agent fixtures; the user is removed last.
     sqlx::query("DELETE FROM workspaces WHERE id = ANY($1)")
