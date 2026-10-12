@@ -662,42 +662,6 @@ pub async fn get_run(
     )
 }
 
-#[cfg(test)]
-mod http_request_url_security_tests {
-    use super::validate_http_request_url;
-
-    #[test]
-    fn allows_public_http_and_https_urls() {
-        assert!(validate_http_request_url("https://example.com/path").is_ok());
-        assert!(validate_http_request_url("http://example.com/path").is_ok());
-    }
-
-    #[test]
-    fn rejects_local_private_and_metadata_targets() {
-        for url in [
-            "http://localhost/",
-            "http://127.0.0.1/",
-            "http://10.0.0.1/",
-            "http://172.16.0.1/",
-            "http://192.168.1.1/",
-            "http://169.254.169.254/",
-            "http://metadata.google.internal/",
-            "http://[::1]/",
-            "http://[fc00::1]/",
-        ] {
-            assert!(validate_http_request_url(url).is_err(), "accepted {url}");
-        }
-    }
-
-    #[test]
-    fn rejects_unsupported_schemes_and_url_credentials() {
-        assert!(validate_http_request_url("file:///etc/passwd").is_err());
-        assert!(validate_http_request_url("ftp://example.com/").is_err());
-        assert!(validate_http_request_url("https://user:pass@example.com/").is_err());
-        assert!(validate_http_request_url("not-a-url").is_err());
-    }
-}
-
 /// Pause an automation for a workspace and disable its scheduled trigger.
 /// Existing runs are left untouched; no new manual or scheduled runs can start
 /// until the automation is published again.
@@ -739,4 +703,40 @@ pub async fn pause_automation(
         created_at: row.try_get("created_at")?,
         updated_at: row.try_get("updated_at")?,
     })
+}
+
+#[cfg(test)]
+mod http_request_url_security_tests {
+    use super::validate_http_request_url;
+
+    #[test]
+    fn allows_public_http_and_https_urls() {
+        assert!(validate_http_request_url("https://example.com/path").is_ok());
+        assert!(validate_http_request_url("http://example.com/path").is_ok());
+    }
+
+    #[test]
+    fn rejects_local_private_and_metadata_targets() {
+        for url in [
+            "http://localhost/",
+            "http://127.0.0.1/",
+            "http://10.0.0.1/",
+            "http://172.16.0.1/",
+            "http://192.168.1.1/",
+            "http://169.254.169.254/",
+            "http://metadata.google.internal/",
+            "http://[::1]/",
+            "http://[fc00::1]/",
+        ] {
+            assert!(validate_http_request_url(url).is_err(), "accepted {url}");
+        }
+    }
+
+    #[test]
+    fn rejects_unsupported_schemes_and_url_credentials() {
+        assert!(validate_http_request_url("file:///etc/passwd").is_err());
+        assert!(validate_http_request_url("ftp://example.com/").is_err());
+        assert!(validate_http_request_url("https://user:pass@example.com/").is_err());
+        assert!(validate_http_request_url("not-a-url").is_err());
+    }
 }
