@@ -240,4 +240,3 @@ mod ai_image_model_tests {
         );
     }
 }
-
