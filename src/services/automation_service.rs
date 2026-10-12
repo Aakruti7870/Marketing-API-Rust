@@ -698,7 +698,6 @@ mod http_request_url_security_tests {
     }
 }
 
-
 /// Pause an automation for a workspace and disable its scheduled trigger.
 /// Existing runs are left untouched; no new manual or scheduled runs can start
 /// until the automation is published again.
