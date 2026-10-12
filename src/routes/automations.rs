@@ -164,7 +164,6 @@ async fn remove(
     ))
 }
 
-
 async fn pause(
     State(s): State<AppState>,
     t: TenantContext,
