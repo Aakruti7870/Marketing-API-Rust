@@ -159,8 +159,8 @@ impl Config {
         let ai_api_base_url =
             env::var("AI_API_BASE_URL").unwrap_or_else(|_| "https://api.openai.com/v1".to_string());
         let ai_model = env::var("AI_MODEL").unwrap_or_else(|_| "gpt-5.6-luna".to_string());
-        let ai_image_model =
-            env::var("AI_IMAGE_MODEL").unwrap_or_else(|_| "gpt-image-2".to_string());
+        let ai_image_model = env::var("AI_IMAGE_MODEL")
+            .unwrap_or_else(|_| default_ai_image_model(&ai_api_base_url).to_string());
         let ai_temperature = env::var("AI_TEMPERATURE")
             .ok()
             .and_then(|v| v.parse::<f32>().ok())
@@ -208,3 +208,36 @@ impl Config {
         })
     }
 }
+
+fn default_ai_image_model(base_url: &str) -> &'static str {
+    if base_url
+        .to_ascii_lowercase()
+        .contains("generativelanguage.googleapis.com")
+    {
+        "gemini-2.5-flash-image"
+    } else {
+        "gpt-image-2"
+    }
+}
+
+#[cfg(test)]
+mod ai_image_model_tests {
+    use super::default_ai_image_model;
+
+    #[test]
+    fn uses_gemini_image_model_for_gemini_compatibility_endpoint() {
+        assert_eq!(
+            default_ai_image_model("https://generativelanguage.googleapis.com/v1beta/openai"),
+            "gemini-2.5-flash-image"
+        );
+    }
+
+    #[test]
+    fn keeps_openai_image_model_for_openai_endpoint() {
+        assert_eq!(
+            default_ai_image_model("https://api.openai.com/v1"),
+            "gpt-image-2"
+        );
+    }
+}
+
