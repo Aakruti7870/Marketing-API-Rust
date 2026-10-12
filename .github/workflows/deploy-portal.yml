@@ -1,4 +1,4 @@
-name: Deploy GOLD-e GrowthOS Portal
+name: Deploy Kryso Portal
 
 on:
   push:
@@ -21,7 +21,7 @@ jobs:
     environment: production
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout GOLD-e GrowthOS project
+      - name: Checkout Kryso project
         uses: actions/checkout@v4
 
       - name: Setup Node.js
@@ -35,12 +35,12 @@ jobs:
         working-directory: frontend
         run: npm install --no-audit --no-fund
 
-      - name: Build GOLD-e GrowthOS Portal
+      - name: Build Kryso Portal
         working-directory: frontend
         run: npm run build
 
       - name: Package portal release
-        run: tar -czf /tmp/golde-portal-release.tar.gz -C frontend/dist .
+        run: tar -czf /tmp/kryso-portal-release.tar.gz -C frontend/dist .
 
       - name: Diagnose GitHub OIDC identity (claims only)
         shell: bash
@@ -60,7 +60,7 @@ jobs:
       - name: Upload portal artifact to private S3
         env:
           RELEASE_BUCKET: golde-growthos-portal-deploy-352285845269-ap-south-1
-        run: aws s3 cp /tmp/golde-portal-release.tar.gz "s3://${RELEASE_BUCKET}/releases/${GITHUB_SHA}.tar.gz" --sse AES256
+        run: aws s3 cp /tmp/kryso-portal-release.tar.gz "s3://${RELEASE_BUCKET}/releases/${GITHUB_SHA}.tar.gz" --sse AES256
 
       - name: Deploy through AWS Systems Manager (no inbound SSH required)
         env:
@@ -79,35 +79,35 @@ jobs:
           fi
           command -v aws >/dev/null 2>&1 || { echo "AWS CLI installation failed" >&2; exit 1; }
           KEY="releases/__GITHUB_SHA__.tar.gz"
-          RELEASE="/tmp/golde-portal-release-__GITHUB_SHA__"
-          ARCHIVE="/tmp/golde-portal-__GITHUB_SHA__.tar.gz"
-          BACKUP="/opt/golde-portal.previous"
+          RELEASE="/tmp/kryso-portal-release-__GITHUB_SHA__"
+          ARCHIVE="/tmp/kryso-portal-__GITHUB_SHA__.tar.gz"
+          BACKUP="/opt/kryso-portal.previous"
 
           aws s3 cp "s3://${BUCKET}/${KEY}" "${ARCHIVE}" --region "${REGION}"
           sudo mkdir -p "${RELEASE}"
           sudo tar -xzf "${ARCHIVE}" -C "${RELEASE}"
           sudo test -s "${RELEASE}/index.html"
-          sudo grep -q 'GOLD-e' "${RELEASE}/index.html"
+          sudo grep -q 'Kryso' "${RELEASE}/index.html"
 
-          CERT_DIR="/etc/letsencrypt/live/goldetech.com"
+          CERT_DIR="/etc/letsencrypt/live/kryso.dev"
           if ! sudo test -s "${CERT_DIR}/fullchain.pem" || ! sudo test -s "${CERT_DIR}/privkey.pem"; then
             echo "Expected public-site TLS certificate files are missing: ${CERT_DIR}" >&2
             exit 1
           fi
 
-          PORTAL_NGINX="/etc/nginx/sites-available/golde-portal"
+          PORTAL_NGINX="/etc/nginx/sites-available/kryso-portal"
           sudo tee "${PORTAL_NGINX}" >/dev/null <<NGINX
           server {
             listen 80;
             listen [::]:80;
-            server_name goldetech.com www.goldetech.com;
-            return 301 https://goldetech.com\$request_uri;
+            server_name kryso.dev kryso.in;
+            return 301 https://kryso.dev\$request_uri;
           }
           server {
             listen 443 ssl http2;
             listen [::]:443 ssl http2;
-            server_name goldetech.com www.goldetech.com;
-            root /opt/golde-portal;
+            server_name kryso.dev kryso.in;
+            root /opt/kryso-portal;
             index index.html;
             ssl_certificate ${CERT_DIR}/fullchain.pem;
             ssl_certificate_key ${CERT_DIR}/privkey.pem;
@@ -128,29 +128,29 @@ jobs:
           for enabled in /etc/nginx/sites-enabled/*; do
             [ -e "${enabled}" ] || continue
             if sudo grep -Eo 'server_name[^;]*;' "${enabled}" 2>/dev/null | grep -Eq '(^|[[:space:]])(goldetech\.com|www\.goldetech\.com)([[:space:];]|$)'; then
-              if [ "${enabled}" != "/etc/nginx/sites-enabled/golde-portal" ]; then
+              if [ "${enabled}" != "/etc/nginx/sites-enabled/kryso-portal" ]; then
                 sudo rm -f "${enabled}"
               fi
             fi
           done
-          sudo ln -sfn "${PORTAL_NGINX}" /etc/nginx/sites-enabled/golde-portal
+          sudo ln -sfn "${PORTAL_NGINX}" /etc/nginx/sites-enabled/kryso-portal
 
           sudo nginx -t
           sudo chown -R www-data:www-data "${RELEASE}"
-          if sudo test -d /opt/golde-portal; then
+          if sudo test -d /opt/kryso-portal; then
             sudo rm -rf "${BACKUP}"
-            sudo mv /opt/golde-portal "${BACKUP}"
+            sudo mv /opt/kryso-portal "${BACKUP}"
           fi
-          sudo mv "${RELEASE}" /opt/golde-portal
+          sudo mv "${RELEASE}" /opt/kryso-portal
           if ! sudo nginx -t || ! sudo systemctl reload nginx; then
-            sudo rm -rf /opt/golde-portal
-            if sudo test -d "${BACKUP}"; then sudo mv "${BACKUP}" /opt/golde-portal; fi
+            sudo rm -rf /opt/kryso-portal
+            if sudo test -d "${BACKUP}"; then sudo mv "${BACKUP}" /opt/kryso-portal; fi
             sudo nginx -t && sudo systemctl reload nginx || true
             exit 1
           fi
-          curl -fsS --resolve goldetech.com:443:127.0.0.1 https://goldetech.com/ | grep -q 'GOLD-e'
-          curl -fsS https://goldetech.com/ | grep -q 'GOLD-e'
-          echo "GOLD_E_GROWTHOS_PORTAL_DEPLOY_OK"
+          curl -fsS --resolve kryso.dev:443:127.0.0.1 https://kryso.dev/ | grep -q 'Kryso'
+          curl -fsS https://kryso.dev/ | grep -q 'Kryso'
+          echo "KRYSO_PORTAL_DEPLOY_OK"
           SCRIPT
 
           # Expand the commit SHA in the remote script before sending it to SSM.
@@ -158,7 +158,7 @@ jobs:
           jq -n --arg script "$(cat /tmp/activate-portal.sh)" '{
             DocumentName: "AWS-RunShellScript",
             InstanceIds: ["i-02f31c0724d24bac8"],
-            Comment: "Deploy GOLD-e GrowthOS portal from GitHub Actions",
+            Comment: "Deploy Kryso GrowthOS portal from GitHub Actions",
             Parameters: {commands: [$script]}
           }' > /tmp/ssm-command.json
 
