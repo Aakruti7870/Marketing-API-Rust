@@ -79,7 +79,7 @@ function Login({ onLogin, verificationStatus }) {
   return <main className="auth-screen">
     <div className="auth-orbit orbit-one" /><div className="auth-orbit orbit-two" />
     <section className="auth-card">
-      <div className="brand-mark"><span>G</span><div><strong>GOLD-e</strong><small>GrowthOS</small></div></div>
+      <div className="brand-mark"><span>G</span><div><strong>Kryso</strong><small>Kryso</small></div></div>
       <div className="auth-heading">
         <div className="eyebrow"><Sparkles size={14}/> Marketing Intelligence</div>
         <h1>{mode === "login" ? "Welcome back." : "Build your growth workspace."}</h1>
@@ -96,7 +96,7 @@ function Login({ onLogin, verificationStatus }) {
         <label>Email<input required type="email" autoComplete="email" value={form.email} onChange={e=>setForm({...form,email:e.target.value})}/></label>
         <label>Password<input required minLength="8" type="password" autoComplete={mode==="login"?"current-password":"new-password"} value={form.password} onChange={e=>setForm({...form,password:e.target.value})}/></label>
         {mode === "register" && <label>Workspace name <span className="muted">(optional)</span><input value={form.workspace_name} onChange={e=>setForm({...form,workspace_name:e.target.value})} placeholder="My Growth Workspace"/></label>}
-        <button className="primary-btn" disabled={busy}>{busy ? "Connecting…" : mode==="login" ? "Enter GrowthOS" : "Create workspace"}<ChevronRight size={18}/></button>
+        <button className="primary-btn" disabled={busy}>{busy ? "Connecting…" : mode==="login" ? "Enter Kryso" : "Create workspace"}<ChevronRight size={18}/></button>
       </form>
       {(pendingEmail || mode === "login") && <button className="text-btn" disabled={resendBusy} onClick={resendVerification}>{resendBusy ? "Requesting…" : "Resend verification email"}</button>}
       <button className="text-btn" onClick={()=>{setMode(mode==="login"?"register":"login");setError("");setNotice("")}}>
@@ -111,14 +111,14 @@ function Shell({ user, onLogout, page, setPage, children }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   return <div className="app-shell">
     <aside className={`sidebar ${mobileOpen?"open":""}`}>
-      <div className="sidebar-brand"><div className="brand-symbol">G</div><div><strong>GOLD-e</strong><small>GrowthOS</small></div><button className="mobile-close" onClick={()=>setMobileOpen(false)}><X/></button></div>
+      <div className="sidebar-brand"><div className="brand-symbol">G</div><div><strong>Kryso</strong><small>Kryso</small></div><button className="mobile-close" onClick={()=>setMobileOpen(false)}><X/></button></div>
       <div className="workspace-mini"><div className="workspace-icon">G</div><div><strong>Growth Workspace</strong><span>Active workspace</span></div><ChevronDown size={15}/></div>
       <nav>{NAV.map(item => { const Icon=item.icon; return <button key={item.id} className={page===item.id?"active":""} onClick={()=>{setPage(item.id);setMobileOpen(false)}}><Icon size={18}/><span>{item.label}</span>{item.id==="agents" && <em>AI</em>}</button> })}</nav>
       <div className="sidebar-bottom"><button><CircleHelp size={17}/>Help center</button><div className="user-mini"><div className="avatar">{initials(user)}</div><div><strong>{user?.first_name || "Workspace user"}</strong><span>{user?.email || ""}</span></div><button className="icon-btn" onClick={onLogout}><LogOut size={16}/></button></div></div>
     </aside>
     {mobileOpen && <div className="scrim" onClick={()=>setMobileOpen(false)}/>}
     <section className="main-area">
-      <header className="topbar"><button className="mobile-menu" onClick={()=>setMobileOpen(true)}><Menu/></button><div className="crumb"><span>GrowthOS</span><ChevronRight size={14}/><strong>{NAV.find(x=>x.id===page)?.label}</strong></div><div className="top-actions"><button className="search-btn"><Search size={17}/><span>Search</span><kbd>⌘ K</kbd></button><button className="icon-circle"><Activity size={17}/></button><div className="top-avatar">{initials(user)}</div></div></header>
+      <header className="topbar"><button className="mobile-menu" onClick={()=>setMobileOpen(true)}><Menu/></button><div className="crumb"><span>Kryso</span><ChevronRight size={14}/><strong>{NAV.find(x=>x.id===page)?.label}</strong></div><div className="top-actions"><button className="search-btn"><Search size={17}/><span>Search</span><kbd>⌘ K</kbd></button><button className="icon-circle"><Activity size={17}/></button><div className="top-avatar">{initials(user)}</div></div></header>
       <main className="page-content">{children}</main>
     </section>
   </div>;
@@ -280,7 +280,7 @@ CUSTOMER SCRIPT:
     setWebsiteBusy(true);setWebsiteNotice("");
     try{
       const data=unwrap(await agentsApi.connectWebsite(websiteConnectAgent.id,websiteForm));
-      setWebsiteNotice(data?.already_installed ? "Website was already connected." : "Website connected. GOLD-e widget is live.");
+      setWebsiteNotice(data?.already_installed ? "Website was already connected." : "Website connected. Kryso widget is live.");
       setWebsiteForm({...websiteForm,cpanel_token:""});
       await load();
     }catch(err){
@@ -299,7 +299,7 @@ CUSTOMER SCRIPT:
   return <div>
     <PageHeader eyebrow="AI AGENT STUDIO" title="AI Agents" description="Create one customer-service brain, configure the business script, then deploy it to WhatsApp, Instagram, Facebook and your website." action={<button className="primary-btn compact" onClick={openCreate}><Plus size={16}/>Create AI agent</button>}/>
     {error&&<div className="alert error">{error}</div>}
-    <section className="agent-hero panel"><div><div className="panel-kicker"><Bot size={14}/> CUSTOMER-FACING AI</div><h2>One business brain. Every customer channel.</h2><p>Business owners configure their services, hours, tone and handoff rules once. GOLD-e keeps the conversation consistent across website and Meta messaging channels.</p></div><div className="agent-hero-stats"><strong>{agents.length}</strong><span>workspace agents</span><strong>4</strong><span>deploy channels</span></div></section>
+    <section className="agent-hero panel"><div><div className="panel-kicker"><Bot size={14}/> CUSTOMER-FACING AI</div><h2>One business brain. Every customer channel.</h2><p>Business owners configure their services, hours, tone and handoff rules once. Kryso keeps the conversation consistent across website and Meta messaging channels.</p></div><div className="agent-hero-stats"><strong>{agents.length}</strong><span>workspace agents</span><strong>4</strong><span>deploy channels</span></div></section>
 
     <section className="agent-section"><div className="section-title"><div><div className="panel-kicker">TEMPLATES</div><h2>Choose the business role</h2></div><span>Healthcare · Education · Hotel · PG · Infrastructure · Sales</span></div>
       <div className="agent-template-grid">{loading?<div className="panel empty-state"><div className="spinner"/><h3>Loading agent templates</h3></div>:templates.map(t=><button className="agent-template-card" key={t.key} onClick={()=>{setSelectedTemplate(t);setName(t.name);setCreateOpen(true);}}><div className="agent-template-icon"><Bot size={20}/></div><div><strong>{t.name}</strong><small>{t.description}</small></div><span className="agent-template-industry">{t.industry}</span></button>)}</div>
@@ -322,8 +322,8 @@ CUSTOMER SCRIPT:
     </div></div>}
 
     {deployAgent&&<div className="agent-modal-backdrop" onClick={()=>setDeployAgent(null)}><div className="agent-modal wide" onClick={e=>e.stopPropagation()}><div className="run-modal-head"><div><div className="panel-kicker">CHANNEL DEPLOYMENT</div><h2>Deploy {deployAgent.name}</h2><span>One agent · four customer entry points</span></div><button className="icon-circle" onClick={()=>setDeployAgent(null)}><X size={17}/></button></div>
-      <div className="channel-grid"><button className={channelForm.channel==="WHATSAPP"?"selected":""} onClick={()=>setChannelForm({...channelForm,channel:"WHATSAPP"})}><MessageSquare/><strong>WhatsApp</strong><small>Meta Cloud API</small></button><button className={channelForm.channel==="INSTAGRAM"?"selected":""} onClick={()=>setChannelForm({...channelForm,channel:"INSTAGRAM"})}><span>◎</span><strong>Instagram</strong><small>Meta Messaging</small></button><button className={channelForm.channel==="FACEBOOK"?"selected":""} onClick={()=>setChannelForm({...channelForm,channel:"FACEBOOK"})}><span>f</span><strong>Facebook</strong><small>Messenger</small></button><button className={channelForm.channel==="WEBSITE"?"selected":""} onClick={()=>setChannelForm({...channelForm,channel:"WEBSITE"})}><Globe2/><strong>Website</strong><small>GOLD-e Web Chat</small></button></div>
-      {channelForm.channel==="WEBSITE"?<div className="deployment-code"><strong>Website deployment</strong><p>Copy this single script into your website before &lt;/body&gt;. It creates the floating GOLD-e customer chat automatically.</p><code>{`<script src="https://api.goldetech.com/api/public/agents/${deployAgent.public_key}/widget.js" defer></script>`}</code><div className="inspector-note">Public widget only. The business owner's AI provider key stays on the GOLD-e backend.</div></div>:<><label className="inspector-label">Business/Page/Phone account ID<input value={channelForm.external_account_id} onChange={e=>setChannelForm({...channelForm,external_account_id:e.target.value})} placeholder="Meta account ID"/></label><label className="inspector-label">Sender/Page/Phone ID<input value={channelForm.external_sender_id} onChange={e=>setChannelForm({...channelForm,external_sender_id:e.target.value})} placeholder="Sender or phone number ID"/></label><label className="inspector-label">Access token<input type="password" value={channelForm.secret} onChange={e=>setChannelForm({...channelForm,secret:e.target.value})} placeholder="Paste channel access token"/></label></>}
+      <div className="channel-grid"><button className={channelForm.channel==="WHATSAPP"?"selected":""} onClick={()=>setChannelForm({...channelForm,channel:"WHATSAPP"})}><MessageSquare/><strong>WhatsApp</strong><small>Meta Cloud API</small></button><button className={channelForm.channel==="INSTAGRAM"?"selected":""} onClick={()=>setChannelForm({...channelForm,channel:"INSTAGRAM"})}><span>◎</span><strong>Instagram</strong><small>Meta Messaging</small></button><button className={channelForm.channel==="FACEBOOK"?"selected":""} onClick={()=>setChannelForm({...channelForm,channel:"FACEBOOK"})}><span>f</span><strong>Facebook</strong><small>Messenger</small></button><button className={channelForm.channel==="WEBSITE"?"selected":""} onClick={()=>setChannelForm({...channelForm,channel:"WEBSITE"})}><Globe2/><strong>Website</strong><small>Kryso Web Chat</small></button></div>
+      {channelForm.channel==="WEBSITE"?<div className="deployment-code"><strong>Website deployment</strong><p>Copy this single script into your website before &lt;/body&gt;. It creates the floating Kryso customer chat automatically.</p><code>{`<script src="https://api.goldetech.com/api/public/agents/${deployAgent.public_key}/widget.js" defer></script>`}</code><div className="inspector-note">Public widget only. The business owner's AI provider key stays on the Kryso backend.</div></div>:<><label className="inspector-label">Business/Page/Phone account ID<input value={channelForm.external_account_id} onChange={e=>setChannelForm({...channelForm,external_account_id:e.target.value})} placeholder="Meta account ID"/></label><label className="inspector-label">Sender/Page/Phone ID<input value={channelForm.external_sender_id} onChange={e=>setChannelForm({...channelForm,external_sender_id:e.target.value})} placeholder="Sender or phone number ID"/></label><label className="inspector-label">Access token<input type="password" value={channelForm.secret} onChange={e=>setChannelForm({...channelForm,secret:e.target.value})} placeholder="Paste channel access token"/></label></>}
       <label className="inspector-label">Display name<input value={channelForm.display_name} onChange={e=>setChannelForm({...channelForm,display_name:e.target.value})}/></label>
       {channelNotice&&<div className={"alert "+(channelNotice.includes("active")?"success":"error")}>{channelNotice}</div>}
       <button className="primary-btn full-btn" disabled={channelBusy||(channelForm.channel!=="WEBSITE"&&!channelForm.secret)} onClick={deployChannel}>{channelBusy?"Deploying…":`Activate ${channelForm.channel}`}<Rocket size={15}/></button>
@@ -332,8 +332,8 @@ CUSTOMER SCRIPT:
 
 
     {websiteConnectAgent&&<div className="agent-modal-backdrop" onClick={()=>setWebsiteConnectAgent(null)}><div className="agent-modal wide" onClick={e=>e.stopPropagation()}>
-      <div className="run-modal-head"><div><div className="panel-kicker">ONE-CLICK WEBSITE SETUP</div><h2>Connect {websiteConnectAgent.name}</h2><span>GOLD-e will install the widget in your cPanel website automatically.</span></div><button className="icon-circle" onClick={()=>setWebsiteConnectAgent(null)}><X size={17}/></button></div>
-      <div className="inspector-note"><b>What happens:</b> GOLD-e reads your <code>public_html/index.html</code>, creates a backup, inserts the widget, saves it, and verifies the live website. Your cPanel token is used for this operation and is not stored.</div>
+      <div className="run-modal-head"><div><div className="panel-kicker">ONE-CLICK WEBSITE SETUP</div><h2>Connect {websiteConnectAgent.name}</h2><span>Kryso will install the widget in your cPanel website automatically.</span></div><button className="icon-circle" onClick={()=>setWebsiteConnectAgent(null)}><X size={17}/></button></div>
+      <div className="inspector-note"><b>What happens:</b> Kryso reads your <code>public_html/index.html</code>, creates a backup, inserts the widget, saves it, and verifies the live website. Your cPanel token is used for this operation and is not stored.</div>
       <label className="inspector-label">Website URL<input value={websiteForm.website_url} onChange={e=>setWebsiteForm({...websiteForm,website_url:e.target.value})} placeholder="https://example.com"/></label>
       <div className="form-grid">
         <label className="inspector-label">cPanel host<input value={websiteForm.cpanel_host} onChange={e=>setWebsiteForm({...websiteForm,cpanel_host:e.target.value})} placeholder="cpanel.example.com"/></label>
@@ -342,12 +342,12 @@ CUSTOMER SCRIPT:
       <label className="inspector-label">cPanel API token<input type="password" value={websiteForm.cpanel_token} onChange={e=>setWebsiteForm({...websiteForm,cpanel_token:e.target.value})} placeholder="Paste cPanel API token"/></label>
       {websiteNotice&&<div className={"alert "+(websiteNotice.includes("live")||websiteNotice.includes("already")?"success":"error")}>{websiteNotice}</div>}
       <button className="primary-btn full-btn" disabled={websiteBusy||!websiteForm.website_url||!websiteForm.cpanel_host||!websiteForm.cpanel_username||!websiteForm.cpanel_token} onClick={connectWebsite}>{websiteBusy?"Connecting and installing…":"Connect & install automatically"}<Rocket size={15}/></button>
-      <div className="inspector-note">Need a cPanel token? In cPanel, open <b>Security → Manage API Tokens</b> and create a token for GOLD-e.</div>
+      <div className="inspector-note">Need a cPanel token? In cPanel, open <b>Security → Manage API Tokens</b> and create a token for Kryso.</div>
     </div></div>}
 
     {domainAgent&&<div className="agent-modal-backdrop" onClick={()=>setDomainAgent(null)}><div className="agent-modal wide" onClick={e=>e.stopPropagation()}>
       <div className="run-modal-head"><div><div className="panel-kicker">CUSTOM DOMAIN</div><h2>Connect {domainAgent.name}</h2><span>Give this AI agent its own customer-facing hostname.</span></div><button className="icon-circle" onClick={()=>setDomainAgent(null)}><X size={17}/></button></div>
-      <div className="inspector-note"><b>How it works:</b> enter a subdomain such as <code>chat.example.com</code>. GOLD-e gives you one CNAME record. After DNS propagation, click Verify. The domain then serves this agent automatically.</div>
+      <div className="inspector-note"><b>How it works:</b> enter a subdomain such as <code>chat.example.com</code>. Kryso gives you one CNAME record. After DNS propagation, click Verify. The domain then serves this agent automatically.</div>
       <label className="inspector-label">Customer hostname<input value={domainForm.hostname} onChange={e=>setDomainForm({hostname:e.target.value})} placeholder="chat.example.com"/></label>
       {domainNotice&&<div className={"alert "+(domainNotice.includes("verified")||domainNotice.includes("completed")?"success":"error")}>{domainNotice}</div>}
       <button className="primary-btn full-btn" disabled={domainBusy||!domainForm.hostname.trim()} onClick={connectDomain}>{domainBusy?"Working…":"Create DNS connection"}<Globe2 size={15}/></button>
@@ -458,7 +458,7 @@ function CustomerInbox() {
               <>
                 <div className="conversation-head"><div><span className="panel-kicker">{selectedChannel}</span><h2>{detail.conversation?.contact_name||selected?.contact_name||"Customer"}</h2><small>{detail.conversation?.contact_phone||detail.conversation?.external_user_id||"Customer channel"}</small></div><span className="status-pill">{detail.conversation?.status||"ACTIVE"}</span></div>
                 <div className="owner-chat">
-                  {(detail.messages||[]).map(m=><div key={m.id} className={`owner-message ${m.role==="user"?"customer":"business"}`}><span>{m.content}</span><small>{m.role==="user"?"Customer":m.metadata?.source==="OWNER"?"Business owner":"GOLD-e AI"}</small></div>)}
+                  {(detail.messages||[]).map(m=><div key={m.id} className={`owner-message ${m.role==="user"?"customer":"business"}`}><span>{m.content}</span><small>{m.role==="user"?"Customer":m.metadata?.source==="OWNER"?"Business owner":"Kryso AI"}</small></div>)}
                 </div>
                 <div className="owner-reply-box">
                   {selectedChannel==="WEBSITE"?<div className="inspector-note">Website owner replies are disabled until the widget has a realtime/polling reply transport. Meta customer channels support owner replies now.</div>:
@@ -503,7 +503,7 @@ function makeNode(def, index=0) {
   const configs={
     HTTP_REQUEST:{method:"GET",url:"https://api.goldetech.com/health",headers:{},body:{}},
     IF:{path:"trigger.source",operator:"exists"},
-    SET:{values:{source:"GrowthOS"}},
+    SET:{values:{source:"Kryso"}},
     DELAY:{seconds:2},
     WHATSAPP_MESSAGE:{to:"{{contact.phone}}",content:"Hello {{contact.name}}"},
     SCHEDULE_TRIGGER:{interval_seconds:300,enabled:true},
@@ -514,7 +514,7 @@ function makeNode(def, index=0) {
 
 function AutomationCanvas({ onBack, onSaved }) {
   const [name,setName]=useState("New Growth Workflow");
-  const [description,setDescription]=useState("Built with the GOLD-e GrowthOS workflow canvas.");
+  const [description,setDescription]=useState("Built with the Kryso Kryso workflow canvas.");
   const [nodes,setNodes]=useState(()=>[makeNode(AUTOMATION_NODE_TYPES[0],0)]);
   const [edges,setEdges]=useState([]);
   const [selected,setSelected]=useState(null);
@@ -716,7 +716,7 @@ function AutomationsPage() {
 
   const act=async(id,action)=>{try{await automationsApi[action](id);setNotice("Automation published.");load();setTimeout(()=>setNotice(""),2500)}catch(e){setNotice(e?.response?.data?.error||e?.message||"Action failed.")}};
   const openRun=async(runId)=>{if(!runId)return;setRunLoading(true);setRunError("");try{setSelectedRun(unwrap(await automationsApi.getRun(runId)))}catch(e){setRunError(e?.response?.data?.error||e?.message||"Unable to load automation run.")}finally{setRunLoading(false)}};
-  const runAutomation=async(id)=>{setNotice("");try{const data=unwrap(await automationsApi.run(id,{payload:{source:"GrowthOS manual test"}}));const runId=data?.run_id;if(!runId)throw new Error("Automation started but no run ID was returned.");setNotice("Automation run started.");await openRun(runId);setTimeout(()=>setNotice(""),2500)}catch(e){setNotice(e?.response?.data?.error||e?.message||"Automation run failed.")}};
+  const runAutomation=async(id)=>{setNotice("");try{const data=unwrap(await automationsApi.run(id,{payload:{source:"Kryso manual test"}}));const runId=data?.run_id;if(!runId)throw new Error("Automation started but no run ID was returned.");setNotice("Automation run started.");await openRun(runId);setTimeout(()=>setNotice(""),2500)}catch(e){setNotice(e?.response?.data?.error||e?.message||"Automation run failed.")}};
   const approveStep=async(step)=>{if(!selectedRun?.id||!step?.id)return;setApproving(true);setRunError("");try{await automationsApi.approveStep(selectedRun.id,step.id);await openRun(selectedRun.id);setNotice("Approval accepted. Success path resumed.");setTimeout(()=>setNotice(""),2500)}catch(e){setRunError(e?.response?.data?.error||e?.message||"Approval failed.")}finally{setApproving(false)}};
   const declineStep=async(step)=>{if(!selectedRun?.id||!step?.id)return;setApproving(true);setRunError("");try{await automationsApi.declineStep(selectedRun.id,step.id);await openRun(selectedRun.id);setNotice("Approval declined. Declined path resumed.");setTimeout(()=>setNotice(""),2500)}catch(e){setRunError(e?.response?.data?.error||e?.message||"Decline failed.")}finally{setApproving(false)}};
   const steps=Array.isArray(selectedRun?.steps)?selectedRun.steps:[];
@@ -724,7 +724,7 @@ function AutomationsPage() {
   if(builder)return <AutomationCanvas onBack={()=>{setBuilder(false);load()}} onSaved={load}/>;
 
   return <div>
-    <PageHeader eyebrow="AUTOMATION ENGINE" title="Automations" description="Design, test and publish native workflows inside GOLD-e GrowthOS." action={<button className="command-btn" onClick={()=>setBuilder(true)}><Plus size={16}/>Create workflow</button>}/>
+    <PageHeader eyebrow="AUTOMATION ENGINE" title="Automations" description="Design, test and publish native workflows inside Kryso Kryso." action={<button className="command-btn" onClick={()=>setBuilder(true)}><Plus size={16}/>Create workflow</button>}/>
     {notice&&<div className="action-notice"><Check size={15}/>{notice}</div>}
     <section className="automation-hero panel"><div><span className="panel-kicker">VISUAL WORKFLOW ENGINE</span><h2>Build automations on a canvas.</h2><p>Drag triggers and actions, connect the flow, configure each node, then save or publish directly to the Rust automation engine.</p></div><button className="primary-btn compact" onClick={()=>setBuilder(true)}><Zap size={15}/>Open workflow builder</button></section>
     <section className="panel table-panel">
@@ -751,7 +751,7 @@ function Analytics() {
 }
 
 function SettingsPage({user}) {
-  return <div><PageHeader eyebrow="WORKSPACE" title="Settings" description="Manage workspace access and your GrowthOS account."/><div className="settings-grid"><section className="panel setting-card"><div className="setting-icon"><Users/></div><div><h2>Workspace</h2><p>Current authenticated workspace and membership context.</p><div className="setting-value">{localStorage.getItem("golde_workspace_id") || "Workspace ID not returned"}</div></div></section><section className="panel setting-card"><div className="setting-icon"><Settings/></div><div><h2>Account</h2><p>{user?.email || "Authenticated user"}</p><div className="setting-value">{user?.first_name} {user?.last_name}</div></div></section></div></div>;
+  return <div><PageHeader eyebrow="WORKSPACE" title="Settings" description="Manage workspace access and your Kryso account."/><div className="settings-grid"><section className="panel setting-card"><div className="setting-icon"><Users/></div><div><h2>Workspace</h2><p>Current authenticated workspace and membership context.</p><div className="setting-value">{localStorage.getItem("golde_workspace_id") || "Workspace ID not returned"}</div></div></section><section className="panel setting-card"><div className="setting-icon"><Settings/></div><div><h2>Account</h2><p>{user?.email || "Authenticated user"}</p><div className="setting-value">{user?.first_name} {user?.last_name}</div></div></section></div></div>;
 }
 
 export default function App() {
@@ -778,7 +778,7 @@ export default function App() {
 
   const logout=async()=>{try{await authApi.logout(localStorage.getItem("golde_refresh_token"))}catch{} ["golde_access_token","golde_refresh_token","golde_user","golde_workspace_id"].forEach(k=>localStorage.removeItem(k));setUser(null);setPage("dashboard")};
 
-  if(checking) return <div className="boot-screen"><div className="boot-logo">G</div><span>Loading GrowthOS</span></div>;
+  if(checking) return <div className="boot-screen"><div className="boot-logo">G</div><span>Loading Kryso</span></div>;
   if(!user) return <Login onLogin={setUser} verificationStatus={verificationStatus}/>;
 
   let content;
