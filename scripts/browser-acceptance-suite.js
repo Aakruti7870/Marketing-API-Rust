@@ -3,11 +3,22 @@
  * Verifies every user-facing module on https://kryso.dev in a real browser.
  */
 
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
+
 let puppeteer;
 try {
-  puppeteer = (await import('puppeteer-core')).default;
+  puppeteer = require('puppeteer');
 } catch {
-  puppeteer = (await import('puppeteer')).default;
+  try {
+    puppeteer = require('/tmp/browser-test/node_modules/puppeteer');
+  } catch {
+    try {
+      puppeteer = (await import('puppeteer')).default;
+    } catch {
+      puppeteer = (await import('puppeteer-core')).default;
+    }
+  }
 }
 
 const TARGET_URL = process.env.TARGET_URL || 'https://kryso.dev';
