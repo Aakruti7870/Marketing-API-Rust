@@ -1,4 +1,5 @@
 pub mod agent_service;
+pub mod ai_service;
 pub mod analytics_service;
 pub mod auth_service;
 pub mod automation_service;
@@ -11,6 +12,7 @@ pub mod whatsapp_service;
 pub mod workspace_service;
 
 pub use agent_service::*;
+pub use ai_service::*;
 pub use analytics_service::*;
 pub use auth_service::*;
 pub use campaign_service::*;

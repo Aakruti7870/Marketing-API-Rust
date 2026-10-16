@@ -513,3 +513,82 @@ Allows external systems (CRMs, payment gateways, custom forms) to trigger a publ
 ### 11.2 WhatsApp Cloud API Webhook (`/api/v1/webhooks/whatsapp`)
 - **Verification (`GET`):** Handles Meta webhook subscription handshake using `hub.mode`, `hub.verify_token`, and returns `hub.challenge`.
 - **Event Ingestion (`POST`):** Receives delivery receipts and status updates (`SENT`, `DELIVERED`, `READ`, `FAILED`) and updates corresponding `messages` records.
+
+---
+
+## 12. Playground & Multi-Provider AI Engine (`/api/v1/playground`)
+
+### 12.1 Supported Providers
+The AI engine supports three first-class providers:
+1. **OpenAI / OpenAI Compatible:** `gpt-5.6-luna`, `gpt-4o`, `gpt-4o-mini`, and Google Gemini (via OpenAI compatibility layer).
+2. **Anthropic Claude Messages API:** `claude-3-5-sonnet-20241022`, `claude-3-haiku-20240307`, `claude-3-opus-20240229`.
+3. **Ollama:** Self-hosted models including `llama3`, `llama3.2`, `mistral`, `phi3`, and `qwen2.5`.
+
+Provider selection is automatic (inferred from model name) or explicit via the `provider` and `model` fields.
+
+### 12.2 List AI Providers (`GET /api/v1/playground/providers`)
+- **Auth:** Bearer Token
+- **Headers:** `x-workspace-id: <uuid>`
+- **Response (`200 OK`):**
+  ```json
+  {
+    "success": true,
+    "message": "Available AI providers and models",
+    "data": [
+      {
+        "id": "openai",
+        "name": "OpenAI / Compatible",
+        "configured": true,
+        "default_model": "gpt-5.6-luna",
+        "models": ["gpt-5.6-luna", "gpt-4o", "gpt-4o-mini"]
+      },
+      {
+        "id": "anthropic",
+        "name": "Anthropic Claude",
+        "configured": true,
+        "default_model": "claude-3-5-sonnet-20241022",
+        "models": ["claude-3-5-sonnet-20241022", "claude-3-haiku-20240307", "claude-3-opus-20240229"]
+      },
+      {
+        "id": "ollama",
+        "name": "Ollama (Self-hosted / Local)",
+        "configured": true,
+        "default_model": "llama3",
+        "models": ["llama3", "llama3.2", "mistral", "phi3", "qwen2.5"]
+      }
+    ]
+  }
+  ```
+
+### 12.3 Generate Marketing Content (`POST /api/v1/playground/generate`)
+- **Auth:** Bearer Token
+- **Headers:** `x-workspace-id: <uuid>`, `Content-Type: application/json`
+- **Request Body:**
+  ```json
+  {
+    "kind": "SMART_WHATSAPP",
+    "prompt": "Festive 20% discount offer",
+    "business_context": "Kryso Marketing Cloud",
+    "provider": "anthropic",
+    "model": "claude-3-5-sonnet-20241022"
+  }
+  ```
+  *(Note: `provider` and `model` are optional. If omitted, the workspace/system default provider is used)*
+- **Response (`200 OK`):**
+  ```json
+  {
+    "success": true,
+    "message": "Playground content generated",
+    "data": {
+      "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+      "kind": "SMART_WHATSAPP",
+      "content": "Unlock 20% off all marketing automation tools today!",
+      "metadata": { ... },
+      "provider": "anthropic",
+      "model": "claude-3-5-sonnet-20241022",
+      "prompt_tokens": 42,
+      "completion_tokens": 85
+    }
+  }
+  ```
+

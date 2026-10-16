@@ -19,3 +19,11 @@
 @media(max-width:720px){.smart-action-row{grid-template-columns:1fr}.smart-action-row small{grid-column:auto}}
 
 .template-distribution{border-top:1px solid var(--line);padding-top:14px;display:grid;gap:10px}.template-distribution .form-grid{align-items:start}
+
+.playground-provider-card{padding:12px;border-radius:13px;background:#f8f4ff;border:1px solid #ebdcfc;display:grid;gap:8px}
+.provider-header{display:flex;align-items:center;gap:6px;font-size:10px;font-weight:800;color:var(--purple);letter-spacing:.08em}
+.provider-field{display:grid;gap:4px}
+.provider-field label{font-size:9px;font-weight:700;color:#6b5f7e}
+.provider-field select{width:100%;box-sizing:border-box;border:1px solid #e1d3f3;border-radius:8px;background:#fff;padding:6px 8px;font-size:10px;color:var(--ink);outline:none;cursor:pointer}
+.provider-field select:focus{border-color:var(--purple)}
+.provider-badge{display:inline-flex;align-items:center;gap:4px;padding:2px 6px;border-radius:5px;font-size:8px;font-weight:700;background:#efe7ff;color:var(--purple);margin-left:6px;text-transform:uppercase}

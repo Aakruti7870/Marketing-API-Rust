@@ -207,6 +207,7 @@ export const automationsApi = {
 };
 
 export const playgroundApi = {
+  providers: () => api.get("/playground/providers"),
   generate: (payload) => api.post("/playground/generate", payload),
   generateImage: (payload) => api.post("/playground/image", payload),
   assets: () => api.get("/playground/assets"),
