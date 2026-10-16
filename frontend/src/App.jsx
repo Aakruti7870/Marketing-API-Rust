@@ -79,7 +79,7 @@ function Login({ onLogin, verificationStatus }) {
   return <main className="auth-screen">
     <div className="auth-orbit orbit-one" /><div className="auth-orbit orbit-two" />
     <section className="auth-card">
-      <div className="brand-mark"><span>G</span><div><strong>GOLD-e</strong><small>GrowthOS</small></div></div>
+      <div className="brand-mark"><span>K</span><div><strong>Kryso</strong><small>GrowthOS</small></div></div>
       <div className="auth-heading">
         <div className="eyebrow"><Sparkles size={14}/> Marketing Intelligence</div>
         <h1>{mode === "login" ? "Welcome back." : "Build your growth workspace."}</h1>
@@ -111,8 +111,8 @@ function Shell({ user, onLogout, page, setPage, children }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   return <div className="app-shell">
     <aside className={`sidebar ${mobileOpen?"open":""}`}>
-      <div className="sidebar-brand"><div className="brand-symbol">G</div><div><strong>GOLD-e</strong><small>GrowthOS</small></div><button className="mobile-close" onClick={()=>setMobileOpen(false)}><X/></button></div>
-      <div className="workspace-mini"><div className="workspace-icon">G</div><div><strong>Growth Workspace</strong><span>Active workspace</span></div><ChevronDown size={15}/></div>
+      <div className="sidebar-brand"><div className="brand-symbol">K</div><div><strong>Kryso</strong><small>GrowthOS</small></div><button className="mobile-close" onClick={()=>setMobileOpen(false)}><X/></button></div>
+      <div className="workspace-mini"><div className="workspace-icon">K</div><div><strong>Growth Workspace</strong><span>Active workspace</span></div><ChevronDown size={15}/></div>
       <nav>{NAV.map(item => { const Icon=item.icon; return <button key={item.id} className={page===item.id?"active":""} onClick={()=>{setPage(item.id);setMobileOpen(false)}}><Icon size={18}/><span>{item.label}</span>{item.id==="agents" && <em>AI</em>}</button> })}</nav>
       <div className="sidebar-bottom"><button><CircleHelp size={17}/>Help center</button><div className="user-mini"><div className="avatar">{initials(user)}</div><div><strong>{user?.first_name || "Workspace user"}</strong><span>{user?.email || ""}</span></div><button className="icon-btn" onClick={onLogout}><LogOut size={16}/></button></div></div>
     </aside>
