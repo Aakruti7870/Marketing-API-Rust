@@ -162,7 +162,8 @@ impl Config {
         let ai_api_key = env::var("AI_API_KEY").ok();
         let ai_api_base_url =
             env::var("AI_API_BASE_URL").unwrap_or_else(|_| "https://api.openai.com/v1".to_string());
-        let ai_model = env::var("AI_MODEL").unwrap_or_else(|_| "gpt-5.6-luna".to_string());
+        let ai_model =
+            env::var("AI_MODEL").unwrap_or_else(|_| default_ai_model(&ai_api_base_url).to_string());
         let ai_image_model = env::var("AI_IMAGE_MODEL")
             .unwrap_or_else(|_| default_ai_image_model(&ai_api_base_url).to_string());
         let ai_temperature = env::var("AI_TEMPERATURE")
@@ -228,6 +229,17 @@ impl Config {
     }
 }
 
+fn default_ai_model(base_url: &str) -> &'static str {
+    if base_url
+        .to_ascii_lowercase()
+        .contains("generativelanguage.googleapis.com")
+    {
+        "gemini-2.0-flash"
+    } else {
+        "gpt-5.6-luna"
+    }
+}
+
 fn default_ai_image_model(base_url: &str) -> &'static str {
     if base_url
         .to_ascii_lowercase()
@@ -240,11 +252,15 @@ fn default_ai_image_model(base_url: &str) -> &'static str {
 }
 
 #[cfg(test)]
-mod ai_image_model_tests {
-    use super::default_ai_image_model;
+mod ai_model_tests {
+    use super::{default_ai_image_model, default_ai_model};
 
     #[test]
-    fn uses_gemini_image_model_for_gemini_compatibility_endpoint() {
+    fn uses_gemini_models_for_gemini_compatibility_endpoint() {
+        assert_eq!(
+            default_ai_model("https://generativelanguage.googleapis.com/v1beta/openai"),
+            "gemini-2.0-flash"
+        );
         assert_eq!(
             default_ai_image_model("https://generativelanguage.googleapis.com/v1beta/openai"),
             "gemini-2.5-flash-image"
@@ -252,7 +268,11 @@ mod ai_image_model_tests {
     }
 
     #[test]
-    fn keeps_openai_image_model_for_openai_endpoint() {
+    fn keeps_openai_models_for_openai_endpoint() {
+        assert_eq!(
+            default_ai_model("https://api.openai.com/v1"),
+            "gpt-5.6-luna"
+        );
         assert_eq!(
             default_ai_image_model("https://api.openai.com/v1"),
             "gpt-image-2"

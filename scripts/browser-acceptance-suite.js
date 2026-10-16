@@ -173,11 +173,16 @@ async function runAcceptanceSuite() {
       if (createBtn) {
         console.log('Triggering AI generation via Playground UI...');
         await createBtn.click();
-        // Wait for response message to appear (giving ample time for upstream LLM response)
-        await page.waitForSelector('.playground-message.assistant', { timeout: 50000 });
-        aiOutputText = await page.$eval('.playground-message.assistant .playground-message-body', el => el.innerText).catch(() => '');
-        aiGenerationPassed = aiOutputText.length > 0;
-        console.log(`AI generation received (${aiOutputText.length} chars): "${aiOutputText.substring(0, 80)}..."`);
+        // Wait for actual assistant response message body, avoiding premature match on thinking-dots
+        try {
+          await page.waitForSelector('.playground-message.assistant .playground-message-body', { timeout: 60000 });
+          aiOutputText = await page.$eval('.playground-message.assistant .playground-message-body', el => el.innerText).catch(() => '');
+          aiGenerationPassed = aiOutputText.length > 0;
+          console.log(`AI generation received (${aiOutputText.length} chars): "${aiOutputText.substring(0, 80)}..."`);
+        } catch (waitErr) {
+          const errorMsg = await page.$eval('.playground-message.error .playground-message-body, .alert.error', el => el.innerText).catch(() => '');
+          console.warn(`Playground assistant response wait: ${waitErr.message}. UI Error: ${errorMsg}`);
+        }
       }
     }
 

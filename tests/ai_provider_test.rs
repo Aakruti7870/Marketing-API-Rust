@@ -294,6 +294,19 @@ fn test_provider_catalog_returns_all_providers() {
     assert!(ollama_info.models.contains(&"llama3".to_string()));
 }
 
+#[test]
+fn test_provider_catalog_gemini_models() {
+    let mut config = Config::from_env().unwrap();
+    config.ai_api_base_url = "https://generativelanguage.googleapis.com/v1beta/openai".to_string();
+    config.ai_model = "gemini-2.0-flash".to_string();
+    let catalog = get_provider_catalog(&config);
+
+    let openai_info = catalog.iter().find(|p| p.id == "openai").unwrap();
+    assert_eq!(openai_info.default_model, "gemini-2.0-flash");
+    assert!(openai_info.models.contains(&"gemini-2.0-flash".to_string()));
+    assert!(openai_info.models.contains(&"gemini-1.5-flash".to_string()));
+}
+
 #[tokio::test]
 async fn test_prompt_length_safeguard_rejects_oversized_input() {
     let config = Config::from_env().unwrap();
