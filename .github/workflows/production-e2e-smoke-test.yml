@@ -10,6 +10,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: production-e2e-smoke-test
+  cancel-in-progress: true
+
 jobs:
   smoke-test:
     if: >-
