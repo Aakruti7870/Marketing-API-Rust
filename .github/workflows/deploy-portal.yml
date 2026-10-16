@@ -127,28 +127,7 @@ jobs:
 
           KRYSO_CERT_DIR="/etc/letsencrypt/live/kryso.dev"
           if sudo test -s "${KRYSO_CERT_DIR}/fullchain.pem" && sudo test -s "${KRYSO_CERT_DIR}/privkey.pem"; then
-            sudo tee -a "${PORTAL_NGINX}" >/dev/null <<KRYSO_NGINX
-          server {
-            listen 443 ssl http2;
-            listen [::]:443 ssl http2;
-            server_name kryso.dev www.kryso.dev;
-            root /opt/golde-portal;
-            index index.html;
-            ssl_certificate ${KRYSO_CERT_DIR}/fullchain.pem;
-            ssl_certificate_key ${KRYSO_CERT_DIR}/privkey.pem;
-            location / { try_files \$uri \$uri/ /index.html; }
-            location = /index.html {
-              add_header Cache-Control "no-store, no-cache, must-revalidate, proxy-revalidate" always;
-              expires -1;
-              try_files \$uri =404;
-            }
-            location = /sw.js {
-              add_header Cache-Control "no-store, no-cache, must-revalidate" always;
-              expires -1;
-              try_files \$uri =404;
-            }
-          }
-KRYSO_NGINX
+            printf 'server {\n  listen 443 ssl http2;\n  listen [::]:443 ssl http2;\n  server_name kryso.dev www.kryso.dev;\n  root /opt/golde-portal;\n  index index.html;\n  ssl_certificate %s/fullchain.pem;\n  ssl_certificate_key %s/privkey.pem;\n  location / { try_files $uri $uri/ /index.html; }\n}\n' "${KRYSO_CERT_DIR}" "${KRYSO_CERT_DIR}" | sudo tee -a "${PORTAL_NGINX}" >/dev/null
           fi
 
           for enabled in /etc/nginx/sites-enabled/*; do
