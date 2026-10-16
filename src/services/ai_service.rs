@@ -114,8 +114,24 @@ pub struct AiProviderInfo {
 }
 
 pub fn get_provider_catalog(config: &Config) -> Vec<AiProviderInfo> {
+    let is_gemini = config
+        .ai_api_base_url
+        .to_ascii_lowercase()
+        .contains("generativelanguage.googleapis.com");
+
     let mut openai_models = vec![config.ai_model.clone()];
-    for m in &["gpt-5.6-luna", "gpt-4o", "gpt-4o-mini"] {
+    let candidate_models: &[&str] = if is_gemini {
+        &[
+            "gemini-2.5-flash",
+            "gemini-2.0-flash",
+            "gemini-1.5-flash",
+            "gemini-1.5-pro",
+        ]
+    } else {
+        &["gpt-5.6-luna", "gpt-4o", "gpt-4o-mini"]
+    };
+
+    for m in candidate_models {
         if !openai_models.contains(&m.to_string()) {
             openai_models.push(m.to_string());
         }
@@ -615,30 +631,112 @@ async fn call_openai(
     })?;
 
     let base_url = config.ai_api_base_url.trim_end_matches('/');
-    let body = build_openai_payload(model, system_prompt, messages, temperature);
+    let is_gemini = base_url
+        .to_ascii_lowercase()
+        .contains("generativelanguage.googleapis.com");
 
-    let response = client
-        .post(format!("{}/chat/completions", base_url))
-        .bearer_auth(api_key)
-        .json(&body)
-        .send()
-        .await
-        .map_err(|e| {
-            tracing::error!("OpenAI HTTP request failed: {}", e);
-            AppError::ExternalService(format!("OpenAI request failed: {}", e))
-        })?;
-
-    let status = response.status();
-    let raw = response.text().await.map_err(|e| {
-        tracing::error!("Failed reading OpenAI response: {}", e);
-        AppError::ExternalService(format!("Failed reading OpenAI response: {}", e))
-    })?;
-
-    if !status.is_success() {
-        tracing::error!("OpenAI returned non-2xx status (HTTP {}): {}", status, raw);
+    let mut candidate_models = vec![model];
+    if is_gemini {
+        for fallback in &[
+            "gemini-2.0-flash",
+            "gemini-1.5-flash",
+            "gemini-2.5-flash",
+            "gemini-1.5-pro",
+        ] {
+            if !candidate_models.contains(fallback) {
+                candidate_models.push(fallback);
+            }
+        }
+    } else {
+        for fallback in &["gpt-4o-mini", "gpt-4o"] {
+            if !candidate_models.contains(fallback) {
+                candidate_models.push(fallback);
+            }
+        }
     }
 
-    parse_openai_response(status, &raw, model)
+    let mut last_error = None;
+    for &candidate in &candidate_models {
+        let body = build_openai_payload(candidate, system_prompt, messages, temperature);
+
+        let response = match client
+            .post(format!("{}/chat/completions", base_url))
+            .bearer_auth(api_key)
+            .json(&body)
+            .send()
+            .await
+        {
+            Ok(res) => res,
+            Err(e) => {
+                tracing::warn!(
+                    "OpenAI/Gemini HTTP request failed for model {}: {}",
+                    candidate,
+                    e
+                );
+                last_error = Some(AppError::ExternalService(format!(
+                    "OpenAI request failed: {}",
+                    e
+                )));
+                continue;
+            }
+        };
+
+        let status = response.status();
+        let raw = match response.text().await {
+            Ok(t) => t,
+            Err(e) => {
+                tracing::warn!(
+                    "Failed reading OpenAI/Gemini response for model {}: {}",
+                    candidate,
+                    e
+                );
+                last_error = Some(AppError::ExternalService(format!(
+                    "Failed reading OpenAI response: {}",
+                    e
+                )));
+                continue;
+            }
+        };
+
+        if !status.is_success() {
+            tracing::warn!(
+                "OpenAI/Gemini returned non-2xx status (HTTP {}) for model {}: {}",
+                status,
+                candidate,
+                raw
+            );
+            if status == reqwest::StatusCode::TOO_MANY_REQUESTS
+                || status == reqwest::StatusCode::SERVICE_UNAVAILABLE
+                || status == reqwest::StatusCode::NOT_FOUND
+            {
+                last_error = parse_openai_response(status, &raw, candidate).err();
+                continue;
+            }
+        }
+
+        match parse_openai_response(status, &raw, candidate) {
+            Ok(result) => {
+                if candidate != model {
+                    tracing::info!(
+                        "Successfully completed AI generation using fallback model {} after primary model {} failed",
+                        candidate,
+                        model
+                    );
+                }
+                return Ok(result);
+            }
+            Err(err) => {
+                last_error = Some(err);
+            }
+        }
+    }
+
+    Err(last_error.unwrap_or_else(|| {
+        AppError::ExternalService(format!(
+            "All candidate models failed for provider: {}",
+            model
+        ))
+    }))
 }
 
 #[cfg(test)]
