@@ -63,12 +63,12 @@ function Playground() {
   const [caption,setCaption]=useState("");
   const [copied,setCopied]=useState(false);
   const [providers,setProviders]=useState([
-    { id:"openai", name:"OpenAI / Compatible", configured:true, default_model:"gpt-5.6-luna", models:["gpt-5.6-luna","gpt-4o","gpt-4o-mini"] },
+    { id:"openai", name:"Google Gemini / Compatible", configured:true, default_model:"gemini-3.5-flash", models:["gemini-3.5-flash","gemini-3.1-pro-preview","gemini-3.8-flash","gemini-2.5-flash"] },
     { id:"anthropic", name:"Anthropic Claude", configured:false, default_model:"claude-sonnet-5-5", models:["claude-sonnet-5-5","claude-haiku-4-5-20251001","claude-opus-4-8"] },
-    { id:"ollama", name:"Ollama (Local)", configured:true, default_model:"llama3", models:["llama3","llama3.2","mistral","phi3","qwen2.5"] }
+    { id:"ollama", name:"Ollama (Local)", configured:false, default_model:"llama3", models:["llama3","llama3.2","mistral","phi3","qwen2.5"] }
   ]);
   const [selectedProvider,setSelectedProvider]=useState("openai");
-  const [selectedModel,setSelectedModel]=useState("gpt-5.6-luna");
+  const [selectedModel,setSelectedModel]=useState("gemini-3.5-flash");
 
   const selectedAssetRow=useMemo(()=>assets.find(a=>a.id===selectedAsset),[assets,selectedAsset]);
   const imageAssets=assets.filter(a=>["BANNER","OFFER_IMAGE","LOGO"].includes(a.kind) && a.public_key);

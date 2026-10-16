@@ -5,7 +5,7 @@ import {
   Pause, Play, Plus, Rocket, Search, Settings, Sparkles, Target, Users, X, Zap,
   Clock3, Globe2, GitBranch, GripVertical, Save, ZoomIn, ZoomOut, Maximize2, Webhook, MousePointer2, PanelRight
 } from "lucide-react";
-import { authApi, dashboardApi, workspaceApi, agentsApi, campaignsApi, contactsApi, messagesApi, automationsApi, unwrap } from "./services/api";
+import { authApi, dashboardApi, workspaceApi, agentsApi, campaignsApi, contactsApi, messagesApi, automationsApi, playgroundApi, unwrap } from "./services/api";
 import Playground, { ChannelContactImporter } from "./Playground";
 import "./App.css";
 
@@ -472,6 +472,257 @@ function CustomerInbox() {
   </div>;
 }
 
+function CampaignsPage() {
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editingCampaign, setEditingCampaign] = useState(null);
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [channel, setChannel] = useState("WHATSAPP");
+  const [targetTags, setTargetTags] = useState("");
+  const [scheduleTime, setScheduleTime] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+
+  const load = async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const res = await campaignsApi.list({ page: 1, limit: 50 });
+      const x = unwrap(res);
+      setItems(Array.isArray(x?.data) ? x.data : Array.isArray(x) ? x : []);
+    } catch (e) {
+      setError(e?.response?.data?.error || e?.message || "Could not load campaigns.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const openCreate = () => {
+    setEditingCampaign(null);
+    setName("");
+    setDescription("");
+    setChannel("WHATSAPP");
+    setTargetTags("");
+    setScheduleTime("");
+    setError("");
+    setNotice("");
+    setModalOpen(true);
+  };
+
+  const openEdit = (c) => {
+    setEditingCampaign(c);
+    setName(c.name || "");
+    setDescription(c.description || "");
+    setChannel(c.channel || "WHATSAPP");
+    setTargetTags(Array.isArray(c.target_tags) ? c.target_tags.join(", ") : "");
+    setScheduleTime(c.schedule_time ? c.schedule_time.slice(0, 16) : "");
+    setError("");
+    setNotice("");
+    setModalOpen(true);
+  };
+
+  const closeModal = () => {
+    setModalOpen(false);
+    setEditingCampaign(null);
+  };
+
+  const saveCampaign = async (e) => {
+    e.preventDefault();
+    if (!name.trim()) return;
+    setSaving(true);
+    setError("");
+    setNotice("");
+    const tags = targetTags.split(",").map(t => t.trim()).filter(Boolean);
+    const payload = {
+      name: name.trim(),
+      description: description.trim() || undefined,
+      channel: channel || "WHATSAPP",
+      target_tags: tags.length ? tags : undefined,
+      schedule_time: scheduleTime ? new Date(scheduleTime).toISOString() : undefined,
+    };
+
+    try {
+      if (editingCampaign) {
+        await campaignsApi.update(editingCampaign.id, payload);
+        setNotice("Campaign updated successfully.");
+      } else {
+        await campaignsApi.create(payload);
+        setNotice("Campaign created successfully.");
+      }
+      closeModal();
+      await load();
+      setTimeout(() => setNotice(""), 3000);
+    } catch (err) {
+      setError(err?.response?.data?.error || err?.message || "Failed to save campaign.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const launchCampaign = async (id) => {
+    try {
+      await campaignsApi.launch(id);
+      setNotice("Campaign launched.");
+      await load();
+      setTimeout(() => setNotice(""), 3000);
+    } catch (err) {
+      setError(err?.response?.data?.error || err?.message || "Failed to launch campaign.");
+    }
+  };
+
+  const pauseCampaign = async (id) => {
+    try {
+      await campaignsApi.pause(id);
+      setNotice("Campaign paused.");
+      await load();
+      setTimeout(() => setNotice(""), 3000);
+    } catch (err) {
+      setError(err?.response?.data?.error || err?.message || "Failed to pause campaign.");
+    }
+  };
+
+  return (
+    <div>
+      <PageHeader
+        eyebrow="ORCHESTRATION"
+        title="Campaigns"
+        description="Create, schedule and launch targeted multi-channel marketing campaigns."
+        action={
+          <button className="primary-btn compact" onClick={openCreate}>
+            <Plus size={16} /> Create campaign
+          </button>
+        }
+      />
+      {error && <div className="alert error">{error}</div>}
+      {notice && <div className="action-notice"><Check size={15} />{notice}</div>}
+
+      <section className="panel table-panel">
+        {loading ? (
+          <div className="empty-state">
+            <div className="spinner" />
+            <h3>Loading workspace campaigns</h3>
+            <p>Connecting to the Rust marketing API…</p>
+          </div>
+        ) : items.length === 0 ? (
+          <div className="empty-state">
+            <div className="empty-icon"><Target /></div>
+            <h3>No campaigns yet</h3>
+            <p>This workspace is ready. Create your first campaign to orchestrate customer outreach.</p>
+            <button className="primary-btn compact" onClick={openCreate}>
+              <Plus size={16} /> Create your first campaign
+            </button>
+          </div>
+        ) : (
+          <div className="data-list">
+            {items.map((item, i) => (
+              <div className="data-row" key={item.id || i}>
+                <div className="row-icon"><Target size={17} /></div>
+                <div>
+                  <strong>{item.name}</strong>
+                  <small>
+                    {item.channel} · {item.description || (item.target_tags?.length ? `Tags: ${item.target_tags.join(", ")}` : "Direct broadcast")}
+                  </small>
+                </div>
+                <span className={`status-pill ${item.status ? "status-" + item.status.toLowerCase() : ""}`}>
+                  {item.status || "DRAFT"}
+                </span>
+                <div className="campaign-actions" style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+                  {(item.status === "DRAFT" || item.status === "PAUSED") && (
+                    <button className="row-action" title="Launch" onClick={() => launchCampaign(item.id)}>
+                      <Play size={13} />
+                    </button>
+                  )}
+                  {item.status === "RUNNING" && (
+                    <button className="row-action" title="Pause" onClick={() => pauseCampaign(item.id)}>
+                      <Pause size={13} />
+                    </button>
+                  )}
+                  <button className="ghost-btn compact" onClick={() => openEdit(item)}>
+                    Edit
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {modalOpen && (
+        <div className="agent-modal-backdrop" onClick={closeModal}>
+          <div className="agent-modal" onClick={e => e.stopPropagation()}>
+            <div className="run-modal-head">
+              <div>
+                <span className="panel-kicker">{editingCampaign ? "EDIT CAMPAIGN" : "NEW CAMPAIGN"}</span>
+                <h2>{editingCampaign ? "Edit Campaign" : "Create Marketing Campaign"}</h2>
+              </div>
+              <button className="icon-btn" onClick={closeModal} aria-label="Close"><X size={18} /></button>
+            </div>
+            {error && <div className="alert error">{error}</div>}
+            <form onSubmit={saveCampaign} className="auth-form" style={{ marginTop: "10px" }}>
+              <label>
+                Campaign name
+                <input
+                  required
+                  value={name}
+                  onChange={e => setName(e.target.value)}
+                  placeholder="e.g. Diwali Festive Offer 2026"
+                />
+              </label>
+              <label>
+                Description
+                <input
+                  value={description}
+                  onChange={e => setDescription(e.target.value)}
+                  placeholder="Campaign goal or customer context"
+                />
+              </label>
+              <div className="form-grid">
+                <label>
+                  Channel
+                  <select value={channel} onChange={e => setChannel(e.target.value)}>
+                    <option value="WHATSAPP">WhatsApp</option>
+                    <option value="EMAIL">Email</option>
+                    <option value="SMS">SMS</option>
+                  </select>
+                </label>
+                <label>
+                  Target tags
+                  <input
+                    value={targetTags}
+                    onChange={e => setTargetTags(e.target.value)}
+                    placeholder="vip, loyal, wholesale"
+                  />
+                </label>
+              </div>
+              <label>
+                Schedule time <span className="muted">(optional, leave blank for manual launch)</span>
+                <input
+                  type="datetime-local"
+                  value={scheduleTime}
+                  onChange={e => setScheduleTime(e.target.value)}
+                />
+              </label>
+              <div style={{ display: "flex", gap: "10px", marginTop: "14px", justifyContent: "flex-end" }}>
+                <button type="button" className="ghost-btn compact" onClick={closeModal}>
+                  Cancel
+                </button>
+                <button type="submit" className="primary-btn compact" disabled={saving}>
+                  {saving ? "Saving…" : editingCampaign ? "Update campaign" : "Save campaign"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SimplePage({ type }) {
   const [items,setItems]=useState([]); const [loading,setLoading]=useState(true);
   const configs={
@@ -480,7 +731,7 @@ function SimplePage({ type }) {
     contacts:{title:"Contacts",eyebrow:"AUDIENCE",desc:"Manage the workspace audience powering your growth engine.",api:contactsApi.list,icon:Users,empty:"No contacts yet."},
     messages:{title:"Messages",eyebrow:"CONVERSATIONS",desc:"Monitor dispatched messages and messaging activity.",api:messagesApi.list,icon:MessageSquare,empty:"No messages yet."},
   };
-  const c=configs[type];
+  const c=configs[type]||configs.contacts;
   useEffect(()=>{c.api({page:1,limit:20}).then(r=>{const x=r?.data;setItems(Array.isArray(x?.data)?x.data:Array.isArray(x)?x:[])}).catch(()=>setItems([])).finally(()=>setLoading(false))},[type]);
   return <div><PageHeader eyebrow={c.eyebrow} title={c.title} description={c.desc} action={<button className="primary-btn compact"><Plus size={16}/>Create new</button>}/><section className="panel table-panel">{loading?<div className="empty-state"><div className="spinner"/><h3>Loading workspace data</h3><p>Connecting to the Rust API…</p></div>:items.length===0?<div className="empty-state"><div className="empty-icon"><c.icon/></div><h3>{c.empty}</h3><p>This workspace is ready. Create your first {type==="agents"?"AI run":type.slice(0,-1)} to see activity here.</p><button className="primary-btn compact"><Plus size={16}/>Get started</button></div>:<div className="data-list">{items.map((item,i)=><div className="data-row" key={item.id||i}><div className="row-icon"><c.icon size={17}/></div><div><strong>{item.name||item.title||item.status||`Record ${i+1}`}</strong><small>{item.description||item.email||item.channel||item.created_at||"Workspace record"}</small></div><span className="status-pill">{item.status||"Active"}</span><ChevronRight size={16}/></div>)}</div>}</section></div>;
 }
@@ -750,8 +1001,201 @@ function Analytics() {
   return <div><PageHeader eyebrow="PERFORMANCE" title="Analytics" description="A live view of workspace performance and growth signals." action={<button className="ghost-btn"><BarChart3 size={16}/>Export report</button>}/><div className="analytics-grid"><section className="panel chart-panel"><div className="panel-head"><div><span className="panel-kicker">ACTIVITY TREND</span><h2>Growth activity</h2></div><span className="range-pill">Last 7 days</span></div><div className="bars">{values.map((v,i)=><div className="bar-wrap" key={i}><div className="bar" style={{height:`${v}%`}}/><small>{["M","T","W","T","F","S","S"][i]}</small></div>)}</div></section><section className="panel"><div className="panel-head"><div><span className="panel-kicker">LIVE DATA</span><h2>Dashboard payload</h2></div></div><pre className="json-view">{data?JSON.stringify(data,null,2):"Waiting for analytics endpoint…"}</pre></section></div></div>;
 }
 
-function SettingsPage({user}) {
-  return <div><PageHeader eyebrow="WORKSPACE" title="Settings" description="Manage workspace access and your GrowthOS account."/><div className="settings-grid"><section className="panel setting-card"><div className="setting-icon"><Users/></div><div><h2>Workspace</h2><p>Current authenticated workspace and membership context.</p><div className="setting-value">{localStorage.getItem("golde_workspace_id") || "Workspace ID not returned"}</div></div></section><section className="panel setting-card"><div className="setting-icon"><Settings/></div><div><h2>Account</h2><p>{user?.email || "Authenticated user"}</p><div className="setting-value">{user?.first_name} {user?.last_name}</div></div></section></div></div>;
+function SettingsPage({ user }) {
+  const [workspace, setWorkspace] = useState(null);
+  const [workspaceName, setWorkspaceName] = useState("");
+  const [members, setMembers] = useState([]);
+  const [providers, setProviders] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteRole, setInviteRole] = useState("MEMBER");
+  const [inviting, setInviting] = useState(false);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+
+  const loadSettings = async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const [w, m, p] = await Promise.all([
+        workspaceApi.current().catch(() => null),
+        workspaceApi.members().catch(() => null),
+        playgroundApi.providers().catch(() => null),
+      ]);
+      if (w) {
+        const wsData = unwrap(w);
+        setWorkspace(wsData);
+        setWorkspaceName(wsData?.name || "");
+      }
+      if (m) setMembers(unwrap(m) || []);
+      if (p) setProviders(unwrap(p) || []);
+    } catch (e) {
+      setError(e?.response?.data?.error || e?.message || "Could not load settings.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { loadSettings(); }, []);
+
+  const saveWorkspace = async (e) => {
+    e.preventDefault();
+    if (!workspaceName.trim()) return;
+    setSaving(true);
+    setError("");
+    setNotice("");
+    try {
+      const res = await workspaceApi.updateCurrent({ name: workspaceName.trim() });
+      const updated = unwrap(res);
+      setWorkspace(updated);
+      setNotice("Workspace name updated successfully.");
+      setTimeout(() => setNotice(""), 3000);
+    } catch (e) {
+      setError(e?.response?.data?.error || e?.message || "Could not update workspace.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const inviteMember = async (e) => {
+    e.preventDefault();
+    if (!inviteEmail.trim()) return;
+    setInviting(true);
+    setError("");
+    setNotice("");
+    try {
+      await workspaceApi.addMember({ email: inviteEmail.trim(), role: inviteRole });
+      setInviteEmail("");
+      setNotice(`Member invited as ${inviteRole}.`);
+      const m = await workspaceApi.members().catch(() => null);
+      if (m) setMembers(unwrap(m) || []);
+      setTimeout(() => setNotice(""), 3000);
+    } catch (e) {
+      setError(e?.response?.data?.error || e?.message || "Could not invite member.");
+    } finally {
+      setInviting(false);
+    }
+  };
+
+  return (
+    <div>
+      <PageHeader
+        eyebrow="WORKSPACE"
+        title="Settings"
+        description="Manage workspace details, team members, and AI integrations."
+      />
+      {error && <div className="alert error">{error}</div>}
+      {notice && <div className="action-notice"><Check size={15} />{notice}</div>}
+
+      <div className="settings-grid">
+        <section className="panel setting-card">
+          <div className="setting-icon"><Users /></div>
+          <div style={{ flex: 1 }}>
+            <h2>Workspace details</h2>
+            <p>Configure your organization and workspace profile.</p>
+            <form onSubmit={saveWorkspace} style={{ marginTop: "12px", display: "grid", gap: "8px" }}>
+              <label style={{ fontSize: "12px", color: "var(--muted)" }}>
+                Workspace Name
+                <input
+                  value={workspaceName}
+                  onChange={e => setWorkspaceName(e.target.value)}
+                  placeholder="My Growth Workspace"
+                  style={{ marginTop: "4px" }}
+                />
+              </label>
+              <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                <span className="setting-value" style={{ fontSize: "11px", color: "var(--muted)" }}>
+                  ID: {workspace?.id || localStorage.getItem("golde_workspace_id") || "—"}
+                </span>
+                <button type="submit" className="primary-btn compact" style={{ marginLeft: "auto" }} disabled={saving}>
+                  {saving ? "Saving…" : "Save details"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </section>
+
+        <section className="panel setting-card">
+          <div className="setting-icon"><Settings /></div>
+          <div>
+            <h2>Account</h2>
+            <p>{user?.email || "Authenticated user"}</p>
+            <div className="setting-value">
+              <strong>{user?.first_name} {user?.last_name}</strong>
+              <small style={{ display: "block", color: "var(--muted)", marginTop: "4px" }}>
+                Role: {workspace?.role || "OWNER"}
+              </small>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <section className="panel" style={{ marginTop: "20px" }}>
+        <div className="panel-head">
+          <div>
+            <span className="panel-kicker">TEAM ACCESS</span>
+            <h2>Workspace Members</h2>
+          </div>
+        </div>
+        <form onSubmit={inviteMember} style={{ display: "flex", gap: "10px", marginBottom: "16px", flexWrap: "wrap" }}>
+          <input
+            type="email"
+            value={inviteEmail}
+            onChange={e => setInviteEmail(e.target.value)}
+            placeholder="colleague@company.com"
+            style={{ flex: 1, minWidth: "200px" }}
+          />
+          <select value={inviteRole} onChange={e => setInviteRole(e.target.value)} style={{ width: "120px" }}>
+            <option value="MEMBER">Member</option>
+            <option value="ADMIN">Admin</option>
+          </select>
+          <button type="submit" className="primary-btn compact" disabled={inviting}>
+            {inviting ? "Inviting…" : "Invite member"}
+          </button>
+        </form>
+        <div className="data-list">
+          {members.length === 0 ? (
+            <div className="empty-state compact">No team members listed yet.</div>
+          ) : (
+            members.map((m, i) => (
+              <div className="data-row" key={m.id || m.user_id || i}>
+                <div className="row-icon"><Users size={16} /></div>
+                <div>
+                  <strong>{m.email || m.name || (m.first_name ? `${m.first_name} ${m.last_name || ""}` : "Team Member")}</strong>
+                  <small>Joined: {m.created_at ? new Date(m.created_at).toLocaleDateString() : "Active"}</small>
+                </div>
+                <span className="status-pill">{m.role || "MEMBER"}</span>
+              </div>
+            ))
+          )}
+        </div>
+      </section>
+
+      <section className="panel" style={{ marginTop: "20px" }}>
+        <div className="panel-head">
+          <div>
+            <span className="panel-kicker">AI PLATFORM</span>
+            <h2>Provider Integrations</h2>
+          </div>
+        </div>
+        <div className="data-list">
+          {providers.map((p, i) => (
+            <div className="data-row" key={p.id || i}>
+              <div className="row-icon"><Sparkles size={16} /></div>
+              <div>
+                <strong>{p.name}</strong>
+                <small>Default: {p.default_model} · Models: {p.models?.join(", ")}</small>
+              </div>
+              <span className={`status-pill ${p.configured ? "status-completed" : "status-waiting_approval"}`}>
+                {p.configured ? "Configured" : "Not configured"}
+              </span>
+            </div>
+          ))}
+        </div>
+      </section>
+    </div>
+  );
 }
 
 export default function App() {
@@ -787,6 +1231,7 @@ export default function App() {
   else if(page==="automations") content=<AutomationsPage/>;
   else if(page==="agents") content=<AgentStudio/>;
   else if(page==="playground") content=<Playground/>;
+  else if(page==="campaigns") content=<CampaignsPage/>;
   else if(page==="settings") content=<SettingsPage user={user}/>;
   else if(page==="messages") content=<CustomerInbox/>;
   else content=<SimplePage type={page}/>;
