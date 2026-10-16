@@ -197,7 +197,7 @@ pub async fn generate_text(
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8)"
     )
     .bind(id).bind(workspace_id).bind(&kind).bind(format!("{} draft", kind.replace('_', " ")))
-    .bind(prompt).bind(&content).bind(&metadata).bind(user_id)
+    .bind(params.prompt).bind(&content).bind(&metadata).bind(user_id)
     .execute(pool).await?;
 
     if kind == "SMART_WHATSAPP" {
