@@ -229,7 +229,7 @@ fn test_openai_compatible_response_parsing() {
 #[test]
 fn test_provider_auto_inference() {
     assert_eq!(
-        AiProvider::from_str_or_default(None, Some("claude-3-haiku-20240307"), "openai"),
+        AiProvider::from_str_or_default(None, Some("claude-3-5-haiku-20241022"), "openai"),
         AiProvider::Anthropic
     );
     assert_eq!(

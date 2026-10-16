@@ -72,6 +72,117 @@ jobs:
             "${BASE_URL}/api/v1/workspaces/current" > workspace.json
           jq -e '.success == true and (.data.id | type == "string")' workspace.json >/dev/null
 
+      - name: Verify AI Provider Catalog & Secrets Exclusion
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error \
+            -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+            -H "x-workspace-id: ${WORKSPACE_ID}" \
+            "${BASE_URL}/api/v1/playground/providers" > providers.json
+
+          jq -e '.success == true and (.data | type == "array") and (.data | length) >= 2' providers.json >/dev/null
+          jq -e '.data[] | select(.id == "openai") | .configured == true' providers.json >/dev/null
+
+          # Strict security: Verify no backend secrets or API keys are leaked in response
+          if grep -qiE 'ai_api_key|anthropic_api_key|jwt_secret|password' providers.json; then
+            echo "::error::Sensitive credential pattern detected in public providers response!"
+            exit 1
+          fi
+          echo "AI Provider Catalog verified: active provider detected and secrets protected."
+
+      - name: Execute Live Production AI Generation and Verify Persistence
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error \
+            -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+            -H "x-workspace-id: ${WORKSPACE_ID}" \
+            -H "Content-Type: application/json" \
+            -d '{"kind":"WHATSAPP_TEMPLATE","prompt":"Special festive offer for valued customers","provider":"openai"}' \
+            "${BASE_URL}/api/v1/playground/generate" > ai-generate.json
+
+          jq -e '.success == true and (.data.id | type == "string") and (.data.content | type == "string") and (.data.content | length) > 0' ai-generate.json >/dev/null
+          jq -e '.data.provider == "openai"' ai-generate.json >/dev/null
+
+          ASSET_ID="$(jq -r '.data.id' ai-generate.json)"
+          echo "Generated asset ID: ${ASSET_ID}"
+
+          curl --fail --silent --show-error \
+            -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+            -H "x-workspace-id: ${WORKSPACE_ID}" \
+            "${BASE_URL}/api/v1/playground/assets" > assets.json
+
+          jq -e --arg id "${ASSET_ID}" '.data[] | select(.id == $id)' assets.json >/dev/null
+          echo "AI generation successfully executed and verified persisted in PostgreSQL."
+
+      - name: Verify AI Safeguards and Fail-Closed Error Handling
+        shell: bash
+        run: |
+          set -euo pipefail
+          # 1. Unconfigured Ollama must fail closed with 400 Bad Request
+          HTTP_CODE="$(curl -s -o /tmp/ollama-res.json -w "%{http_code}" \
+            -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+            -H "x-workspace-id: ${WORKSPACE_ID}" \
+            -H "Content-Type: application/json" \
+            -d '{"kind":"WHATSAPP_TEMPLATE","prompt":"Test unconfigured","provider":"ollama"}' \
+            "${BASE_URL}/api/v1/playground/generate" || true)"
+
+          if [[ "${HTTP_CODE}" == "200" ]]; then
+            echo "::error::Unconfigured Ollama unexpectedly succeeded or simulated response!"
+            exit 1
+          fi
+          echo "Ollama fail-closed check PASSED (HTTP ${HTTP_CODE})."
+
+          # 2. Oversized prompt safeguard must fail closed with 400 Validation error
+          OVERSIZED_PROMPT="$(python3 -c 'print("X" * 65000)')"
+          HTTP_CODE_SAFEGUARD="$(curl -s -o /tmp/safeguard-res.json -w "%{http_code}" \
+            -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+            -H "x-workspace-id: ${WORKSPACE_ID}" \
+            -H "Content-Type: application/json" \
+            -d "$(jq -n --arg p "${OVERSIZED_PROMPT}" '{"kind":"WHATSAPP_TEMPLATE","prompt":$p,"provider":"openai"}')" \
+            "${BASE_URL}/api/v1/playground/generate" || true)"
+
+          test "${HTTP_CODE_SAFEGUARD}" = "400"
+          grep -q "exceeds maximum allowed safeguard" /tmp/safeguard-res.json
+          echo "Prompt length safeguard PASSED (HTTP 400 rejection)."
+
+      - name: Verify Core Modules Live Endpoints & Tenant Isolation
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Verify Campaigns endpoint responds with 200 OK
+          curl --fail --silent --show-error \
+            -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+            -H "x-workspace-id: ${WORKSPACE_ID}" \
+            "${BASE_URL}/api/v1/campaigns" > /dev/null
+
+          # Verify AI Agents endpoint responds with 200 OK
+          curl --fail --silent --show-error \
+            -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+            -H "x-workspace-id: ${WORKSPACE_ID}" \
+            "${BASE_URL}/api/v1/agents" > /dev/null
+
+          # Verify Messages endpoint responds with 200 OK
+          curl --fail --silent --show-error \
+            -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+            -H "x-workspace-id: ${WORKSPACE_ID}" \
+            "${BASE_URL}/api/v1/messages" > /dev/null
+
+          # Verify Tenant isolation: mismatched workspace rejected
+          FAKE_WORKSPACE_ID="00000000-0000-0000-0000-000000000001"
+          HTTP_ISOLATION="$(curl -s -o /tmp/isolation-res.json -w "%{http_code}" \
+            -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+            -H "x-workspace-id: ${FAKE_WORKSPACE_ID}" \
+            "${BASE_URL}/api/v1/playground/assets" || true)"
+
+          if [[ "${HTTP_ISOLATION}" == "200" ]]; then
+            echo "::error::Unauthorized workspace access succeeded!"
+            exit 1
+          fi
+          echo "Core modules and tenant isolation PASSED."
+
+
       - name: Clean previous E2E test automations
         shell: bash
         run: |

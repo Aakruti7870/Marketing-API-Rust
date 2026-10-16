@@ -134,7 +134,7 @@ pub fn get_provider_catalog(config: &Config) -> Vec<AiProviderInfo> {
             default_model: "claude-3-5-sonnet-20241022".to_string(),
             models: vec![
                 "claude-3-5-sonnet-20241022".to_string(),
-                "claude-3-haiku-20240307".to_string(),
+                "claude-3-5-haiku-20241022".to_string(),
                 "claude-3-opus-20240229".to_string(),
             ],
         },
