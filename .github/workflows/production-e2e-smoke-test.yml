@@ -483,6 +483,19 @@ jobs:
           jq -e '.data.steps[] | select(.node_type == "APPROVAL") | .output.approved == false and .output.outcome == "declined"' approval-declined-completed.json >/dev/null
           echo "Production automation E2E smoke test PASSED: success and declined approval paths verified."
 
+      - name: Execute Real Browser Acceptance Suite on https://kryso.dev
+        shell: bash
+        env:
+          TARGET_URL: https://kryso.dev
+          SMOKE_EMAIL: ${{ secrets.SMOKE_TEST_EMAIL }}
+          SMOKE_PASSWORD: ${{ secrets.SMOKE_TEST_PASSWORD }}
+        run: |
+          set -euo pipefail
+          echo "Setting up headless browser test dependencies..."
+          mkdir -p /tmp/browser-test
+          npm install --prefix /tmp/browser-test puppeteer --no-audit --no-fund
+          NODE_PATH=/tmp/browser-test/node_modules node scripts/browser-acceptance-suite.js
+
       - name: Remove temporary E2E automations
         if: always()
         shell: bash
