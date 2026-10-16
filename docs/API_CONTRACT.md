@@ -521,7 +521,7 @@ Allows external systems (CRMs, payment gateways, custom forms) to trigger a publ
 ### 12.1 Supported Providers
 The AI engine supports three first-class providers:
 1. **OpenAI / OpenAI Compatible:** `gpt-5.6-luna`, `gpt-4o`, `gpt-4o-mini`, and Google Gemini (via OpenAI compatibility layer).
-2. **Anthropic Claude Messages API:** `claude-3-5-sonnet-20241022`, `claude-3-haiku-20240307`, `claude-3-opus-20240229`.
+2. **Anthropic Claude Messages API:** `claude-sonnet-5-5`, `claude-haiku-4-5-20251001`, `claude-opus-4-8`.
 3. **Ollama:** Self-hosted models including `llama3`, `llama3.2`, `mistral`, `phi3`, and `qwen2.5`.
 
 Provider selection is automatic (inferred from model name) or explicit via the `provider` and `model` fields.
@@ -546,8 +546,8 @@ Provider selection is automatic (inferred from model name) or explicit via the `
         "id": "anthropic",
         "name": "Anthropic Claude",
         "configured": true,
-        "default_model": "claude-3-5-sonnet-20241022",
-        "models": ["claude-3-5-sonnet-20241022", "claude-3-haiku-20240307", "claude-3-opus-20240229"]
+        "default_model": "claude-sonnet-5-5",
+        "models": ["claude-sonnet-5-5", "claude-haiku-4-5-20251001", "claude-opus-4-8"]
       },
       {
         "id": "ollama",
@@ -570,7 +570,7 @@ Provider selection is automatic (inferred from model name) or explicit via the `
     "prompt": "Festive 20% discount offer",
     "business_context": "Kryso Marketing Cloud",
     "provider": "anthropic",
-    "model": "claude-3-5-sonnet-20241022"
+    "model": "claude-sonnet-5-5"
   }
   ```
   *(Note: `provider` and `model` are optional. If omitted, the workspace/system default provider is used)*
@@ -585,7 +585,7 @@ Provider selection is automatic (inferred from model name) or explicit via the `
       "content": "Unlock 20% off all marketing automation tools today!",
       "metadata": { ... },
       "provider": "anthropic",
-      "model": "claude-3-5-sonnet-20241022",
+      "model": "claude-sonnet-5-5",
       "prompt_tokens": 42,
       "completion_tokens": 85
     }

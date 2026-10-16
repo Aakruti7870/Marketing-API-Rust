@@ -73,7 +73,7 @@ impl AiProvider {
     pub fn default_model(&self, config: &Config) -> String {
         match self {
             AiProvider::OpenAi => config.ai_model.clone(),
-            AiProvider::Anthropic => "claude-3-5-sonnet-20241022".to_string(),
+            AiProvider::Anthropic => "claude-sonnet-5-5".to_string(),
             AiProvider::Ollama => "llama3".to_string(),
         }
     }
@@ -131,11 +131,11 @@ pub fn get_provider_catalog(config: &Config) -> Vec<AiProviderInfo> {
             id: "anthropic".to_string(),
             name: "Anthropic Claude".to_string(),
             configured: config.anthropic_api_key.is_some(),
-            default_model: "claude-3-5-sonnet-20241022".to_string(),
+            default_model: "claude-sonnet-5-5".to_string(),
             models: vec![
-                "claude-3-5-sonnet-20241022".to_string(),
-                "claude-3-5-haiku-20241022".to_string(),
-                "claude-3-opus-20240229".to_string(),
+                "claude-sonnet-5-5".to_string(),
+                "claude-haiku-4-5-20251001".to_string(),
+                "claude-opus-4-8".to_string(),
             ],
         },
         AiProviderInfo {
@@ -620,11 +620,15 @@ mod tests {
     #[test]
     fn test_provider_inference_from_model_name() {
         assert_eq!(
-            AiProvider::from_str_or_default(None, Some("claude-3-5-sonnet-20241022"), "openai"),
+            AiProvider::from_str_or_default(None, Some("claude-sonnet-5-5"), "openai"),
             AiProvider::Anthropic
         );
         assert_eq!(
-            AiProvider::from_str_or_default(None, Some("claude-3-haiku"), "openai"),
+            AiProvider::from_str_or_default(None, Some("claude-haiku-4-5-20251001"), "openai"),
+            AiProvider::Anthropic
+        );
+        assert_eq!(
+            AiProvider::from_str_or_default(None, Some("claude-opus-4-8"), "openai"),
             AiProvider::Anthropic
         );
         assert_eq!(
@@ -667,14 +671,14 @@ mod tests {
         ];
 
         let payload = build_anthropic_payload(
-            "claude-3-5-sonnet-20241022",
+            "claude-sonnet-5-5",
             Some("You are a helpful marketing assistant"),
             &messages,
             0.5,
             1024,
         );
 
-        assert_eq!(payload["model"], "claude-3-5-sonnet-20241022");
+        assert_eq!(payload["model"], "claude-sonnet-5-5");
         assert_eq!(payload["max_tokens"], 1024);
         assert_eq!(payload["system"], "You are a helpful marketing assistant");
         assert_eq!(payload["messages"].as_array().unwrap().len(), 2);
@@ -694,7 +698,7 @@ mod tests {
                     "text": "Here is the festive marketing campaign copy."
                 }
             ],
-            "model": "claude-3-5-sonnet-20241022",
+            "model": "claude-sonnet-5-5",
             "stop_reason": "end_turn",
             "usage": {
                 "input_tokens": 42,
@@ -703,8 +707,7 @@ mod tests {
         }"#;
 
         let result =
-            parse_anthropic_response(reqwest::StatusCode::OK, json, "claude-3-5-sonnet-20241022")
-                .unwrap();
+            parse_anthropic_response(reqwest::StatusCode::OK, json, "claude-sonnet-5-5").unwrap();
 
         assert_eq!(result.provider, "anthropic");
         assert_eq!(result.text, "Here is the festive marketing campaign copy.");
@@ -725,7 +728,7 @@ mod tests {
         let err = parse_anthropic_response(
             reqwest::StatusCode::UNAUTHORIZED,
             error_json,
-            "claude-3-5-sonnet-20241022",
+            "claude-sonnet-5-5",
         )
         .unwrap_err();
 

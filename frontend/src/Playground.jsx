@@ -64,7 +64,7 @@ function Playground() {
   const [copied,setCopied]=useState(false);
   const [providers,setProviders]=useState([
     { id:"openai", name:"OpenAI / Compatible", configured:true, default_model:"gpt-5.6-luna", models:["gpt-5.6-luna","gpt-4o","gpt-4o-mini"] },
-    { id:"anthropic", name:"Anthropic Claude", configured:false, default_model:"claude-3-5-sonnet-20241022", models:["claude-3-5-sonnet-20241022","claude-3-haiku-20240307","claude-3-opus-20240229"] },
+    { id:"anthropic", name:"Anthropic Claude", configured:false, default_model:"claude-sonnet-5-5", models:["claude-sonnet-5-5","claude-haiku-4-5-20251001","claude-opus-4-8"] },
     { id:"ollama", name:"Ollama (Local)", configured:true, default_model:"llama3", models:["llama3","llama3.2","mistral","phi3","qwen2.5"] }
   ]);
   const [selectedProvider,setSelectedProvider]=useState("openai");

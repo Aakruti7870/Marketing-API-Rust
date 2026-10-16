@@ -74,6 +74,8 @@ jobs:
         run: cargo generate-lockfile
 
       - name: Build release binary
+        env:
+          GIT_COMMIT_SHA: ${{ github.sha }}
         run: cargo build --locked --release --target x86_64-unknown-linux-gnu --bin golde-marketing-api
 
       - name: Validate release binary

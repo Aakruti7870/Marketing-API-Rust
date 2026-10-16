@@ -44,6 +44,8 @@ jobs:
           curl --fail --silent --show-error --retry 3 --retry-delay 2 \
             "${BASE_URL}/health" | tee health.json
           jq -e '.status == "healthy" and .service == "GOLD-e GrowthOS Marketing API"' health.json >/dev/null
+          COMMIT_SHA="$(jq -r '.commit_sha // "unknown"' health.json)"
+          echo "Production deployed backend commit SHA: ${COMMIT_SHA}"
 
       - name: Login
         shell: bash
@@ -83,6 +85,16 @@ jobs:
 
           jq -e '.success == true and (.data | type == "array") and (.data | length) >= 2' providers.json >/dev/null
           jq -e '.data[] | select(.id == "openai") | .configured == true' providers.json >/dev/null
+
+          # Verify Anthropic Claude model catalog is current and does not advertise retired models
+          jq -e '.data[] | select(.id == "anthropic") | .default_model == "claude-sonnet-5-5"' providers.json >/dev/null
+          jq -e '.data[] | select(.id == "anthropic") | (.models | index("claude-sonnet-5-5")) != null' providers.json >/dev/null
+          jq -e '.data[] | select(.id == "anthropic") | (.models | index("claude-haiku-4-5-20251001")) != null' providers.json >/dev/null
+          jq -e '.data[] | select(.id == "anthropic") | (.models | index("claude-opus-4-8")) != null' providers.json >/dev/null
+          if grep -qiE 'claude-3-5-sonnet-20241022|claude-3-opus-20240229' providers.json; then
+            echo "::error::Retired Anthropic Claude model IDs found in provider catalog!"
+            exit 1
+          fi
 
           # Strict security: Verify no backend secrets or API keys are leaked in response
           if grep -qiE 'ai_api_key|anthropic_api_key|jwt_secret|password' providers.json; then
@@ -151,6 +163,24 @@ jobs:
           fi
           grep -q "exceeds maximum allowed safeguard" /tmp/safeguard-res.json
           echo "Prompt length safeguard PASSED (HTTP ${HTTP_CODE_SAFEGUARD} rejection)."
+
+          # 3. Fail-closed safeguard: if Anthropic is unconfigured, reject requests rather than simulating success
+          ANTHROPIC_CONFIGURED="$(jq -r '.data[] | select(.id == "anthropic") | .configured' providers.json)"
+          if [[ "${ANTHROPIC_CONFIGURED}" == "false" ]]; then
+            HTTP_CODE_CLAUDE="$(curl -s -o /tmp/claude-res.json -w "%{http_code}" \
+              -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+              -H "x-workspace-id: ${WORKSPACE_ID}" \
+              -H "Content-Type: application/json" \
+              -d '{"kind":"WHATSAPP_TEMPLATE","prompt":"Test unconfigured Claude","provider":"anthropic"}' \
+              "${BASE_URL}/api/v1/playground/generate" || true)"
+            if [[ "${HTTP_CODE_CLAUDE}" == "200" ]]; then
+              echo "::error::Unconfigured Anthropic Claude unexpectedly succeeded with HTTP 200 simulation!"
+              exit 1
+            fi
+            echo "Anthropic fail-closed check PASSED (HTTP ${HTTP_CODE_CLAUDE})."
+          else
+            echo "Anthropic Claude configured on backend."
+          fi
 
       - name: Verify Core Modules Live Endpoints & Tenant Isolation
         shell: bash

@@ -100,8 +100,8 @@ jobs:
           server {
             listen 80;
             listen [::]:80;
-            server_name goldetech.com www.goldetech.com;
-            return 301 https://goldetech.com\$request_uri;
+            server_name goldetech.com www.goldetech.com kryso.dev www.kryso.dev;
+            return 301 https://\$host\$request_uri;
           }
           server {
             listen 443 ssl http2;
@@ -124,6 +124,32 @@ jobs:
             }
           }
           NGINX
+
+          KRYSO_CERT_DIR="/etc/letsencrypt/live/kryso.dev"
+          if sudo test -s "${KRYSO_CERT_DIR}/fullchain.pem" && sudo test -s "${KRYSO_CERT_DIR}/privkey.pem"; then
+            sudo tee -a "${PORTAL_NGINX}" >/dev/null <<KRYSO_NGINX
+          server {
+            listen 443 ssl http2;
+            listen [::]:443 ssl http2;
+            server_name kryso.dev www.kryso.dev;
+            root /opt/golde-portal;
+            index index.html;
+            ssl_certificate ${KRYSO_CERT_DIR}/fullchain.pem;
+            ssl_certificate_key ${KRYSO_CERT_DIR}/privkey.pem;
+            location / { try_files \$uri \$uri/ /index.html; }
+            location = /index.html {
+              add_header Cache-Control "no-store, no-cache, must-revalidate, proxy-revalidate" always;
+              expires -1;
+              try_files \$uri =404;
+            }
+            location = /sw.js {
+              add_header Cache-Control "no-store, no-cache, must-revalidate" always;
+              expires -1;
+              try_files \$uri =404;
+            }
+          }
+KRYSO_NGINX
+          fi
 
           for enabled in /etc/nginx/sites-enabled/*; do
             [ -e "${enabled}" ] || continue
