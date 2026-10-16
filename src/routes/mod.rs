@@ -79,6 +79,7 @@ async fn health_check(
             "service": "GOLD-e GrowthOS Marketing API",
             "runtime": "Rust / Axum / SQLx",
             "version": "1.0.0",
+            "commit_sha": option_env!("GIT_COMMIT_SHA").unwrap_or("development"),
             "dependencies": {
                 "redis": redis_status
             },

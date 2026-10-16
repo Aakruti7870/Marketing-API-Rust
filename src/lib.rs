@@ -20,7 +20,7 @@ use tower_http::cors::{AllowOrigin, Any, CorsLayer};
 use tower_http::trace::TraceLayer;
 
 pub fn app(state: AppState) -> Router {
-    let configured_origins = state
+    let mut configured_origins = state
         .config
         .cors_origin
         .split(',')
@@ -28,6 +28,15 @@ pub fn app(state: AppState) -> Router {
         .filter(|origin| !origin.is_empty())
         .filter_map(|origin| HeaderValue::try_from(origin).ok())
         .collect::<Vec<_>>();
+
+    // Permit Kryso branded production domains
+    for domain in ["https://kryso.dev", "https://www.kryso.dev"] {
+        if let Ok(val) = HeaderValue::try_from(domain) {
+            if !configured_origins.contains(&val) {
+                configured_origins.push(val);
+            }
+        }
+    }
 
     // Wildcard is retained only for local development. Config::from_env rejects
     // wildcard origins in production before the router is created.

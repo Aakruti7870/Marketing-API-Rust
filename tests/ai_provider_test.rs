@@ -25,14 +25,14 @@ fn test_claude_messages_request_structure() {
     ];
 
     let payload = build_anthropic_payload(
-        "claude-3-5-sonnet-20241022",
+        "claude-sonnet-5-5",
         Some("You are an expert copywriter"),
         &messages,
         0.7,
         1500,
     );
 
-    assert_eq!(payload["model"], "claude-3-5-sonnet-20241022");
+    assert_eq!(payload["model"], "claude-sonnet-5-5");
     assert_eq!(payload["max_tokens"], 1500);
     assert_eq!(payload["system"], "You are an expert copywriter");
     let msgs = payload["messages"].as_array().expect("array of messages");
@@ -55,7 +55,7 @@ fn test_claude_messages_response_parsing_success() {
                 "text": "Exclusive festive offer: Get 20% off all marketing automation tools!"
             }
         ],
-        "model": "claude-3-5-sonnet-20241022",
+        "model": "claude-sonnet-5-5",
         "stop_reason": "end_turn",
         "usage": {
             "input_tokens": 58,
@@ -63,11 +63,11 @@ fn test_claude_messages_response_parsing_success() {
         }
     }"#;
 
-    let res = parse_anthropic_response(StatusCode::OK, raw_response, "claude-3-5-sonnet-20241022")
+    let res = parse_anthropic_response(StatusCode::OK, raw_response, "claude-sonnet-5-5")
         .expect("parsing should succeed");
 
     assert_eq!(res.provider, "anthropic");
-    assert_eq!(res.model, "claude-3-5-sonnet-20241022");
+    assert_eq!(res.model, "claude-sonnet-5-5");
     assert_eq!(
         res.text,
         "Exclusive festive offer: Get 20% off all marketing automation tools!"
@@ -89,7 +89,7 @@ fn test_claude_api_error_response() {
     let err = parse_anthropic_response(
         StatusCode::UNAUTHORIZED,
         error_response,
-        "claude-3-5-sonnet-20241022",
+        "claude-sonnet-5-5",
     )
     .expect_err("should return AppError");
 
@@ -229,11 +229,15 @@ fn test_openai_compatible_response_parsing() {
 #[test]
 fn test_provider_auto_inference() {
     assert_eq!(
-        AiProvider::from_str_or_default(None, Some("claude-3-5-haiku-20241022"), "openai"),
+        AiProvider::from_str_or_default(None, Some("claude-sonnet-5-5"), "openai"),
         AiProvider::Anthropic
     );
     assert_eq!(
-        AiProvider::from_str_or_default(None, Some("claude-3-opus-20240229"), "openai"),
+        AiProvider::from_str_or_default(None, Some("claude-haiku-4-5-20251001"), "openai"),
+        AiProvider::Anthropic
+    );
+    assert_eq!(
+        AiProvider::from_str_or_default(None, Some("claude-opus-4-8"), "openai"),
         AiProvider::Anthropic
     );
     assert_eq!(
@@ -272,6 +276,18 @@ fn test_provider_catalog_returns_all_providers() {
     assert!(ids.contains(&"openai"));
     assert!(ids.contains(&"anthropic"));
     assert!(ids.contains(&"ollama"));
+
+    let anthropic_info = catalog.iter().find(|p| p.id == "anthropic").unwrap();
+    assert_eq!(anthropic_info.default_model, "claude-sonnet-5-5");
+    assert!(anthropic_info
+        .models
+        .contains(&"claude-sonnet-5-5".to_string()));
+    assert!(anthropic_info
+        .models
+        .contains(&"claude-haiku-4-5-20251001".to_string()));
+    assert!(anthropic_info
+        .models
+        .contains(&"claude-opus-4-8".to_string()));
 
     let ollama_info = catalog.iter().find(|p| p.id == "ollama").unwrap();
     assert_eq!(ollama_info.configured, config.ollama_base_url.is_some());
@@ -314,7 +330,7 @@ async fn test_missing_anthropic_api_key_fails_closed_without_simulation() {
 
     let options = AiCompletionOptions {
         provider: Some("anthropic".to_string()),
-        model: Some("claude-3-5-sonnet-20241022".to_string()),
+        model: Some("claude-sonnet-5-5".to_string()),
         system_prompt: None,
         messages: vec![AiChatMessage {
             role: "user".to_string(),
