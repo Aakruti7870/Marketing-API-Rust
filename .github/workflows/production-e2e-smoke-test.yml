@@ -108,24 +108,26 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          ACTIVE_MODEL="$(jq -r '.data[] | select(.id == "openai") | .default_model' providers.json)"
-          echo "Active default model for OpenAI generation: ${ACTIVE_MODEL}"
+          MODELS=($(jq -r '.data[] | select(.id == "openai") | .models[]' providers.json))
+          echo "Available models for OpenAI provider: ${MODELS[*]}"
           HTTP_CODE=""
-          for attempt in $(seq 1 5); do
-            echo "Attempt $attempt: generating AI content with model ${ACTIVE_MODEL}..."
+          for attempt in $(seq 0 4); do
+            MODEL_INDEX=$((attempt % ${#MODELS[@]}))
+            CURRENT_MODEL="${MODELS[$MODEL_INDEX]}"
+            echo "Attempt $((attempt + 1)): generating AI content with model ${CURRENT_MODEL}..."
             HTTP_CODE="$(curl -s -o ai-generate.json -w "%{http_code}" \
               -H "Authorization: Bearer ${ACCESS_TOKEN}" \
               -H "x-workspace-id: ${WORKSPACE_ID}" \
               -H "Content-Type: application/json" \
-              -d "$(jq -n --arg m "${ACTIVE_MODEL}" '{"kind":"WHATSAPP_TEMPLATE","prompt":"Special festive offer for valued customers","provider":"openai","model":$m}')" \
+              -d "$(jq -n --arg m "${CURRENT_MODEL}" '{"kind":"WHATSAPP_TEMPLATE","prompt":"Special festive offer for valued customers","provider":"openai","model":$m}')" \
               "${BASE_URL}/api/v1/playground/generate")"
             if [ "$HTTP_CODE" = "200" ]; then
               break
             fi
-            echo "Attempt $attempt returned HTTP ${HTTP_CODE}:"
+            echo "Attempt $((attempt + 1)) returned HTTP ${HTTP_CODE}:"
             cat ai-generate.json || true
-            BACKOFF=$((attempt * 10))
-            echo "Backing off for ${BACKOFF}s before attempt $((attempt + 1))..."
+            BACKOFF=$(((attempt + 1) * 10))
+            echo "Backing off for ${BACKOFF}s before attempt $((attempt + 2))..."
             sleep "$BACKOFF"
           done
 
