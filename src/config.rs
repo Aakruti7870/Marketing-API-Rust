@@ -234,9 +234,9 @@ fn default_ai_model(base_url: &str) -> &'static str {
         .to_ascii_lowercase()
         .contains("generativelanguage.googleapis.com")
     {
-        "gemini-3.8-flash"
+        "gemini-3.5-flash"
     } else {
-        "gpt-5.6-luna"
+        "gpt-4o-mini"
     }
 }
 
@@ -245,9 +245,9 @@ fn default_ai_image_model(base_url: &str) -> &'static str {
         .to_ascii_lowercase()
         .contains("generativelanguage.googleapis.com")
     {
-        "gemini-2.5-flash-image"
+        "imagen-3.0-generate-002"
     } else {
-        "gpt-image-2"
+        "dall-e-3"
     }
 }
 
@@ -259,23 +259,20 @@ mod ai_model_tests {
     fn uses_gemini_models_for_gemini_compatibility_endpoint() {
         assert_eq!(
             default_ai_model("https://generativelanguage.googleapis.com/v1beta/openai"),
-            "gemini-3.8-flash"
+            "gemini-3.5-flash"
         );
         assert_eq!(
             default_ai_image_model("https://generativelanguage.googleapis.com/v1beta/openai"),
-            "gemini-2.5-flash-image"
+            "imagen-3.0-generate-002"
         );
     }
 
     #[test]
     fn keeps_openai_models_for_openai_endpoint() {
-        assert_eq!(
-            default_ai_model("https://api.openai.com/v1"),
-            "gpt-5.6-luna"
-        );
+        assert_eq!(default_ai_model("https://api.openai.com/v1"), "gpt-4o-mini");
         assert_eq!(
             default_ai_image_model("https://api.openai.com/v1"),
-            "gpt-image-2"
+            "dall-e-3"
         );
     }
 }

@@ -122,13 +122,13 @@ pub fn get_provider_catalog(config: &Config) -> Vec<AiProviderInfo> {
     let mut openai_models = vec![config.ai_model.clone()];
     let candidate_models: &[&str] = if is_gemini {
         &[
-            "gemini-3.8-flash",
             "gemini-3.5-flash",
-            "gemini-3.1-pro",
-            "gemini-2.5-pro",
+            "gemini-3.1-pro-preview",
+            "gemini-3.8-flash",
+            "gemini-2.5-flash",
         ]
     } else {
-        &["gpt-5.6-luna", "gpt-4o", "gpt-4o-mini"]
+        &["gpt-4o", "gpt-4o-mini", "gpt-4-turbo"]
     };
 
     for m in candidate_models {
@@ -650,10 +650,10 @@ async fn call_openai(
     let mut candidate_models = vec![model];
     if is_gemini {
         for fallback in &[
-            "gemini-3.8-flash",
             "gemini-3.5-flash",
-            "gemini-3.1-pro",
-            "gemini-2.5-pro",
+            "gemini-3.1-pro-preview",
+            "gemini-3.8-flash",
+            "gemini-2.5-flash",
         ] {
             if !candidate_models.contains(fallback) {
                 candidate_models.push(fallback);
