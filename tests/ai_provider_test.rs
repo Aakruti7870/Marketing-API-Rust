@@ -172,6 +172,30 @@ fn test_ollama_error_propagation() {
 }
 
 #[test]
+fn test_openai_payload_structure() {
+    let messages = vec![AiChatMessage {
+        role: "user".to_string(),
+        content: "Generate product marketing headline".to_string(),
+    }];
+
+    let payload = build_openai_payload(
+        "gpt-5.6-luna",
+        Some("You are an expert copywriter"),
+        &messages,
+        0.5,
+    );
+
+    assert_eq!(payload["model"], "gpt-5.6-luna");
+    assert_eq!(payload["temperature"], 0.5);
+    let msgs = payload["messages"].as_array().expect("messages array");
+    assert_eq!(msgs.len(), 2);
+    assert_eq!(msgs[0]["role"], "system");
+    assert_eq!(msgs[0]["content"], "You are an expert copywriter");
+    assert_eq!(msgs[1]["role"], "user");
+    assert_eq!(msgs[1]["content"], "Generate product marketing headline");
+}
+
+#[test]
 fn test_openai_compatible_response_parsing() {
     let raw = r#"{
         "id": "chatcmpl-test-999",
