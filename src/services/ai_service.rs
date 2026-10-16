@@ -362,12 +362,24 @@ async fn call_anthropic(
         .json(&body)
         .send()
         .await
-        .map_err(|e| AppError::ExternalService(format!("Anthropic request failed: {}", e)))?;
+        .map_err(|e| {
+            tracing::error!("Anthropic request failed: {}", e);
+            AppError::ExternalService(format!("Anthropic request failed: {}", e))
+        })?;
 
     let status = response.status();
     let raw = response.text().await.map_err(|e| {
+        tracing::error!("Failed reading Anthropic response: {}", e);
         AppError::ExternalService(format!("Failed reading Anthropic response: {}", e))
     })?;
+
+    if !status.is_success() {
+        tracing::error!(
+            "Anthropic returned non-2xx status (HTTP {}): {}",
+            status,
+            raw
+        );
+    }
 
     parse_anthropic_response(status, &raw, model)
 }
@@ -485,13 +497,20 @@ async fn call_ollama(
         .json(&body)
         .send()
         .await
-        .map_err(|e| AppError::ExternalService(format!("Ollama request failed: {}", e)))?;
+        .map_err(|e| {
+            tracing::error!("Ollama request failed: {}", e);
+            AppError::ExternalService(format!("Ollama request failed: {}", e))
+        })?;
 
     let status = response.status();
-    let raw = response
-        .text()
-        .await
-        .map_err(|e| AppError::ExternalService(format!("Failed reading Ollama response: {}", e)))?;
+    let raw = response.text().await.map_err(|e| {
+        tracing::error!("Failed reading Ollama response: {}", e);
+        AppError::ExternalService(format!("Failed reading Ollama response: {}", e))
+    })?;
+
+    if !status.is_success() {
+        tracing::error!("Ollama returned non-2xx status (HTTP {}): {}", status, raw);
+    }
 
     parse_ollama_response(status, &raw, model)
 }
@@ -602,13 +621,20 @@ async fn call_openai(
         .json(&body)
         .send()
         .await
-        .map_err(|e| AppError::ExternalService(format!("OpenAI request failed: {}", e)))?;
+        .map_err(|e| {
+            tracing::error!("OpenAI HTTP request failed: {}", e);
+            AppError::ExternalService(format!("OpenAI request failed: {}", e))
+        })?;
 
     let status = response.status();
-    let raw = response
-        .text()
-        .await
-        .map_err(|e| AppError::ExternalService(format!("Failed reading OpenAI response: {}", e)))?;
+    let raw = response.text().await.map_err(|e| {
+        tracing::error!("Failed reading OpenAI response: {}", e);
+        AppError::ExternalService(format!("Failed reading OpenAI response: {}", e))
+    })?;
+
+    if !status.is_success() {
+        tracing::error!("OpenAI returned non-2xx status (HTTP {}): {}", status, raw);
+    }
 
     parse_openai_response(status, &raw, model)
 }
