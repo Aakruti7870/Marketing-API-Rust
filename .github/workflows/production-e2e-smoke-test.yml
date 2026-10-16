@@ -111,7 +111,7 @@ jobs:
           ACTIVE_MODEL="$(jq -r '.data[] | select(.id == "openai") | .default_model' providers.json)"
           echo "Active default model for OpenAI generation: ${ACTIVE_MODEL}"
           HTTP_CODE=""
-          for attempt in $(seq 1 4); do
+          for attempt in $(seq 1 5); do
             echo "Attempt $attempt: generating AI content with model ${ACTIVE_MODEL}..."
             HTTP_CODE="$(curl -s -o ai-generate.json -w "%{http_code}" \
               -H "Authorization: Bearer ${ACCESS_TOKEN}" \
@@ -124,7 +124,9 @@ jobs:
             fi
             echo "Attempt $attempt returned HTTP ${HTTP_CODE}:"
             cat ai-generate.json || true
-            sleep 3
+            BACKOFF=$((attempt * 5))
+            echo "Backing off for ${BACKOFF}s before attempt $((attempt + 1))..."
+            sleep "$BACKOFF"
           done
 
           if [ "$HTTP_CODE" != "200" ]; then
