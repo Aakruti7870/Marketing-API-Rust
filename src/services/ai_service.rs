@@ -576,12 +576,19 @@ pub fn parse_openai_response(
     })?;
 
     if !status.is_success() {
-        let msg = payload
-            .get("error")
+        let error_obj = if let Some(arr) = payload.as_array() {
+            arr.first().and_then(|v| v.get("error"))
+        } else {
+            payload.get("error")
+        };
+
+        let msg = error_obj
             .and_then(|e| e.get("message"))
             .and_then(Value::as_str)
+            .or_else(|| error_obj.and_then(Value::as_str))
             .or_else(|| payload.get("message").and_then(Value::as_str))
-            .unwrap_or("OpenAI API returned an error");
+            .unwrap_or(raw);
+
         return Err(AppError::ExternalService(format!(
             "OpenAI error (HTTP {}): {}",
             status, msg
@@ -630,7 +637,12 @@ async fn call_openai(
         AppError::BadRequest("AI provider is not configured. Set AI_API_KEY on the backend.".into())
     })?;
 
-    let base_url = config.ai_api_base_url.trim_end_matches('/');
+    let base_url = config.ai_api_base_url.trim().trim_end_matches('/');
+    let endpoint = if base_url.ends_with("/chat/completions") {
+        base_url.to_string()
+    } else {
+        format!("{}/chat/completions", base_url)
+    };
     let is_gemini = base_url
         .to_ascii_lowercase()
         .contains("generativelanguage.googleapis.com");
@@ -638,8 +650,8 @@ async fn call_openai(
     let mut candidate_models = vec![model];
     if is_gemini {
         for fallback in &[
-            "gemini-2.0-flash",
             "gemini-1.5-flash",
+            "gemini-2.0-flash",
             "gemini-2.5-flash",
             "gemini-1.5-pro",
         ] {
@@ -660,7 +672,7 @@ async fn call_openai(
         let body = build_openai_payload(candidate, system_prompt, messages, temperature);
 
         let response = match client
-            .post(format!("{}/chat/completions", base_url))
+            .post(&endpoint)
             .bearer_auth(api_key)
             .json(&body)
             .send()
