@@ -198,6 +198,24 @@ async function runAcceptanceSuite() {
     const providerOptions = await page.$$eval('select option, .provider-badge, .playground-brand', els => els.map(e => e.innerText));
     console.log('Playground UI elements:', providerOptions.slice(0, 5));
 
+    // Select gemini-3.5-flash in model dropdown if available
+    try {
+      await page.evaluate(() => {
+        const selects = Array.from(document.querySelectorAll('.playground-provider-card select'));
+        const modelSelect = selects.find(s => Array.from(s.options).some(o => o.value.includes('gemini')));
+        if (modelSelect) {
+          const targetOpt = Array.from(modelSelect.options).find(o => o.value === 'gemini-3.5-flash');
+          if (targetOpt) {
+            modelSelect.value = 'gemini-3.5-flash';
+            modelSelect.dispatchEvent(new Event('change', { bubbles: true }));
+          }
+        }
+      });
+      await new Promise(r => setTimeout(r, 1000));
+    } catch (e) {
+      console.warn('Model selector helper:', e.message);
+    }
+
     // Execute real AI test generation inside Playground
     const promptInput = await page.$('.playground-composer textarea');
     let aiGenerationPassed = false;
@@ -208,16 +226,25 @@ async function runAcceptanceSuite() {
       const createBtn = await page.$('.playground-composer button');
       if (createBtn) {
         console.log('Triggering AI generation via Playground UI...');
-        await createBtn.click();
-        try {
-          await page.waitForSelector('.playground-message.assistant .playground-message-body', { timeout: 60000 });
-          aiOutputText = await page.$eval('.playground-message.assistant .playground-message-body', el => el.innerText).catch(() => '');
-          aiGenerationPassed = aiOutputText.length > 0;
-          console.log(`AI generation received (${aiOutputText.length} chars): "${aiOutputText.substring(0, 80)}..."`);
-        } catch (waitErr) {
-          const errorMsg = await page.$eval('.playground-message.error .playground-message-body, .alert.error', el => el.innerText).catch(() => '');
-          console.warn(`Playground assistant response wait: ${waitErr.message}. UI Error: ${errorMsg}`);
-          await captureScreenshot(page, 'playground-error');
+        for (let attempt = 1; attempt <= 2; attempt++) {
+          await createBtn.click();
+          try {
+            await page.waitForSelector('.playground-message.assistant .playground-message-body', { timeout: 45000 });
+            aiOutputText = await page.$eval('.playground-message.assistant .playground-message-body', el => el.innerText).catch(() => '');
+            aiGenerationPassed = aiOutputText.length > 0;
+            if (aiGenerationPassed) {
+              console.log(`AI generation received (${aiOutputText.length} chars): "${aiOutputText.substring(0, 80)}..."`);
+              break;
+            }
+          } catch (waitErr) {
+            const errorMsg = await page.$eval('.playground-message.error .playground-message-body, .alert.error', el => el.innerText).catch(() => '');
+            console.warn(`Attempt ${attempt} Playground response wait: ${waitErr.message}. UI Error: ${errorMsg}`);
+            if (attempt === 1) {
+              await new Promise(r => setTimeout(r, 4000));
+            } else {
+              await captureScreenshot(page, 'playground-error');
+            }
+          }
         }
       }
     }

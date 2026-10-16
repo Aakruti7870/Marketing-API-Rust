@@ -91,7 +91,10 @@ function Playground() {
         if(Array.isArray(provs) && provs.length) {
           setProviders(provs);
           const current = provs.find(pr=>pr.id===selectedProvider) || provs[0];
-          if(current && !selectedModel) setSelectedModel(current.default_model);
+          if(current) {
+            const preferred = current.models?.find(m=>m==="gemini-3.5-flash") || current.default_model;
+            setSelectedModel(preferred);
+          }
         }
       }
       const active=agentList.find(v=>v.status==="ACTIVE");
