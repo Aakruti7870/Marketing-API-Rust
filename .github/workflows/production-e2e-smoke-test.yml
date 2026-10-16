@@ -107,12 +107,28 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          curl --fail --silent --show-error \
-            -H "Authorization: Bearer ${ACCESS_TOKEN}" \
-            -H "x-workspace-id: ${WORKSPACE_ID}" \
-            -H "Content-Type: application/json" \
-            -d '{"kind":"WHATSAPP_TEMPLATE","prompt":"Special festive offer for valued customers","provider":"openai"}' \
-            "${BASE_URL}/api/v1/playground/generate" > ai-generate.json
+          HTTP_CODE=""
+          for attempt in $(seq 1 4); do
+            echo "Attempt $attempt: generating AI content..."
+            HTTP_CODE="$(curl -s -o ai-generate.json -w "%{http_code}" \
+              -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+              -H "x-workspace-id: ${WORKSPACE_ID}" \
+              -H "Content-Type: application/json" \
+              -d '{"kind":"WHATSAPP_TEMPLATE","prompt":"Special festive offer for valued customers","provider":"openai"}' \
+              "${BASE_URL}/api/v1/playground/generate")"
+            if [ "$HTTP_CODE" = "200" ]; then
+              break
+            fi
+            echo "Attempt $attempt returned HTTP ${HTTP_CODE}:"
+            cat ai-generate.json || true
+            sleep 3
+          done
+
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "::error::AI Generation failed with HTTP ${HTTP_CODE}"
+            cat ai-generate.json
+            exit 1
+          fi
 
           jq -e '.success == true and (.data.id | type == "string") and (.data.content | type == "string") and (.data.content | length) > 0' ai-generate.json >/dev/null
           jq -e '.data.provider == "openai"' ai-generate.json >/dev/null
@@ -120,7 +136,7 @@ jobs:
           ASSET_ID="$(jq -r '.data.id' ai-generate.json)"
           echo "Generated asset ID: ${ASSET_ID}"
 
-          curl --fail --silent --show-error \
+          curl --fail --silent --show-error --retry 3 --retry-delay 2 \
             -H "Authorization: Bearer ${ACCESS_TOKEN}" \
             -H "x-workspace-id: ${WORKSPACE_ID}" \
             "${BASE_URL}/api/v1/playground/assets" > assets.json
