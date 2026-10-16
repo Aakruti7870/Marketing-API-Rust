@@ -298,13 +298,13 @@ fn test_provider_catalog_returns_all_providers() {
 fn test_provider_catalog_gemini_models() {
     let mut config = Config::from_env().unwrap();
     config.ai_api_base_url = "https://generativelanguage.googleapis.com/v1beta/openai".to_string();
-    config.ai_model = "gemini-2.0-flash".to_string();
+    config.ai_model = "gemini-3.8-flash".to_string();
     let catalog = get_provider_catalog(&config);
 
     let openai_info = catalog.iter().find(|p| p.id == "openai").unwrap();
-    assert_eq!(openai_info.default_model, "gemini-2.0-flash");
-    assert!(openai_info.models.contains(&"gemini-2.0-flash".to_string()));
-    assert!(openai_info.models.contains(&"gemini-1.5-flash".to_string()));
+    assert_eq!(openai_info.default_model, "gemini-3.8-flash");
+    assert!(openai_info.models.contains(&"gemini-3.8-flash".to_string()));
+    assert!(openai_info.models.contains(&"gemini-2.5-pro".to_string()));
 }
 
 #[tokio::test]
