@@ -16,6 +16,7 @@ use uuid::Uuid;
 
 pub fn routes(state: AppState) -> Router {
     Router::new()
+        .route("/providers", get(get_providers))
         .route("/generate", post(generate))
         .route("/image", post(generate_image))
         .route("/assets", get(list_assets))
@@ -41,6 +42,8 @@ struct GenerateRequest {
     kind: String,
     prompt: String,
     business_context: Option<String>,
+    provider: Option<String>,
+    model: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -58,6 +61,17 @@ struct ShareWhatsAppRequest {
     caption: Option<String>,
 }
 
+async fn get_providers(
+    State(state): State<AppState>,
+    tenant: TenantContext,
+) -> Result<impl IntoResponse, AppError> {
+    require_workspace_roles(&tenant.workspace_role, &["OWNER", "ADMIN", "MEMBER"])?;
+    Ok(json_success(
+        playground_service::list_providers(&state.config),
+        "Available AI providers and models",
+    ))
+}
+
 async fn generate(
     State(state): State<AppState>,
     tenant: TenantContext,
@@ -70,9 +84,13 @@ async fn generate(
             &state.pool,
             tenant.workspace_id,
             tenant.user_id,
-            &dto.kind,
-            &dto.prompt,
-            dto.business_context.as_deref().unwrap_or(""),
+            playground_service::GenerateTextParams {
+                kind: &dto.kind,
+                prompt: &dto.prompt,
+                context: dto.business_context.as_deref().unwrap_or(""),
+                provider: dto.provider.as_deref(),
+                model: dto.model.as_deref(),
+            },
         )
         .await?,
         "Playground content generated",

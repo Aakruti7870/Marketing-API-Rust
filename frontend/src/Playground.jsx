@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  Bot, Image, Mail, MessageSquare, Search, Sparkles, Send, Copy, Check,
-  Share2, RefreshCw, Wand2, FileText, Upload
+  Bot, Image, Search, Sparkles, Send, Copy, Check,
+  Share2, RefreshCw, Wand2, FileText, Upload, Cpu
 } from "lucide-react";
 import { agentsApi, playgroundApi, automationsApi, unwrap } from "./services/api";
 import "./Playground.css";
@@ -62,21 +62,42 @@ function Playground() {
   const [selectedAsset,setSelectedAsset]=useState("");
   const [caption,setCaption]=useState("");
   const [copied,setCopied]=useState(false);
+  const [providers,setProviders]=useState([
+    { id:"openai", name:"OpenAI / Compatible", configured:true, default_model:"gpt-5.6-luna", models:["gpt-5.6-luna","gpt-4o","gpt-4o-mini"] },
+    { id:"anthropic", name:"Anthropic Claude", configured:false, default_model:"claude-3-5-sonnet-20241022", models:["claude-3-5-sonnet-20241022","claude-3-haiku-20240307","claude-3-opus-20240229"] },
+    { id:"ollama", name:"Ollama (Local)", configured:true, default_model:"llama3", models:["llama3","llama3.2","mistral","phi3","qwen2.5"] }
+  ]);
+  const [selectedProvider,setSelectedProvider]=useState("openai");
+  const [selectedModel,setSelectedModel]=useState("gpt-5.6-luna");
 
   const selectedAssetRow=useMemo(()=>assets.find(a=>a.id===selectedAsset),[assets,selectedAsset]);
   const imageAssets=assets.filter(a=>["BANNER","OFFER_IMAGE","LOGO"].includes(a.kind) && a.public_key);
 
   const loadData=async()=>{
     try{
-      const [g,x,a,au]=await Promise.all([playgroundApi.groups(),playgroundApi.assets(),agentsApi.list(),automationsApi.list()]);
-      setGroups(unwrap(g)||[]);
-      setAssets(unwrap(x)||[]);
+      const [g,x,a,au,p]=await Promise.all([
+        playgroundApi.groups().catch(()=>null),
+        playgroundApi.assets().catch(()=>null),
+        agentsApi.list().catch(()=>null),
+        automationsApi.list().catch(()=>null),
+        playgroundApi.providers().catch(()=>null),
+      ]);
+      if(g) setGroups(unwrap(g)||[]);
+      if(x) setAssets(unwrap(x)||[]);
       const agentList=unwrap(a)||[];
-      setAutomations(unwrap(au)||[]);
+      if(au) setAutomations(unwrap(au)||[]);
+      if(p) {
+        const provs = unwrap(p);
+        if(Array.isArray(provs) && provs.length) {
+          setProviders(provs);
+          const current = provs.find(pr=>pr.id===selectedProvider) || provs[0];
+          if(current && !selectedModel) setSelectedModel(current.default_model);
+        }
+      }
       const active=agentList.find(v=>v.status==="ACTIVE");
       setSelectedAgentId(prev=>prev||active?.id||"");
       if(active){
-        const cs=unwrap(await agentsApi.channels(active.id))||[];
+        const cs=unwrap(await agentsApi.channels(active.id).catch(()=>null))||[];
         const wa=cs.filter(c=>c.channel==="WHATSAPP" && c.status==="ACTIVE");
         setChannels(wa);
         setSelectedChannel(prev=>prev||wa[0]?.id||"");
@@ -96,9 +117,21 @@ function Playground() {
     setPrompt("");setBusy(true);setError("");setNotice("");
     setChat(prev=>[...prev,{role:"user",content:request}]);
     try{
-      const data=unwrap(await playgroundApi.generate({kind,prompt:request,business_context:context}));
+      const data=unwrap(await playgroundApi.generate({
+        kind,
+        prompt:request,
+        business_context:context,
+        provider:selectedProvider,
+        model:selectedModel||undefined,
+      }));
       setSelectedAsset(data?.id||"");
-      setChat(prev=>[...prev,{role:"assistant",content:data?.content||"",asset:data}]);
+      setChat(prev=>[...prev,{
+        role:"assistant",
+        content:data?.content||"",
+        asset:data,
+        provider:data?.provider||selectedProvider,
+        model:data?.model||selectedModel,
+      }]);
       if(kind==="SMART_WHATSAPP" && data?.id) await loadButtonActions(data.id);
       await loadData();
     }catch(e){
@@ -151,6 +184,38 @@ function Playground() {
         <div className="playground-tabs">
           {TABS.map(([id,label,Icon])=><button key={id} className={tab===id?"active":""} onClick={()=>{setTab(id);setError("");}}><Icon size={16}/><span>{label}</span></button>)}
         </div>
+        <div className="playground-provider-card">
+          <div className="provider-header"><Cpu size={14}/><span>AI ENGINE</span></div>
+          <div className="provider-field">
+            <label>Provider</label>
+            <select
+              value={selectedProvider}
+              onChange={e=>{
+                const pId = e.target.value;
+                setSelectedProvider(pId);
+                const p = providers.find(item=>item.id===pId);
+                if(p?.models?.length) setSelectedModel(p.models[0]);
+              }}
+            >
+              {providers.map(p=>(
+                <option key={p.id} value={p.id}>
+                  {p.name}{!p.configured ? (p.id === "ollama" ? " (Needs Endpoint)" : " (Needs Key)") : ""}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="provider-field">
+            <label>Model</label>
+            <select
+              value={selectedModel}
+              onChange={e=>setSelectedModel(e.target.value)}
+            >
+              {(providers.find(p=>p.id===selectedProvider)?.models||[selectedModel||"default"]).map(m=>(
+                <option key={m} value={m}>{m}</option>
+              ))}
+            </select>
+          </div>
+        </div>
         <div className="playground-mini-list">
           <span>RECENT ASSETS</span>
           {assets.slice(0,7).map(a=><button key={a.id} onClick={()=>{setSelectedAsset(a.id);setTab(a.public_key?"images":"templates");}}><small>{a.kind.replaceAll("_"," ")}</small><strong>{a.title}</strong></button>)}
@@ -170,7 +235,7 @@ function Playground() {
           <div className="playground-chat panel">
             <div className="playground-chat-head"><div><span className="panel-kicker">CHATGPT-STYLE PLAYGROUND</span><h2>Creative conversation</h2></div><select value={mode} onChange={e=>setMode(e.target.value)}>{[...TEXT_TYPES,["SEO","SEO Package"]].map(([k,l])=><option key={k} value={k}>{l}</option>)}</select></div>
             <div className="playground-chat-stream">
-              {!chat.length?<div className="playground-empty"><Bot size={34}/><strong>Start with a business request</strong><span>“Create a festive offer for our customers with a warm WhatsApp message.”</span></div>:chat.map((m,i)=><div className={"playground-message "+m.role} key={i}><div className="playground-message-role">{m.role==="user"?"You":m.role==="assistant"?"GOLD-e AI":"System"}</div><div className="playground-message-body">{m.content}</div>{m.role==="assistant"&&<button className="mini-copy" onClick={()=>copyText(m.content)}>{copied?<Check size={12}/>:<Copy size={12}/>}Copy</button>}</div>)}
+              {!chat.length?<div className="playground-empty"><Bot size={34}/><strong>Start with a business request</strong><span>“Create a festive offer for our customers with a warm WhatsApp message.”</span></div>:chat.map((m,i)=><div className={"playground-message "+m.role} key={i}><div className="playground-message-role">{m.role==="user"?"You":m.role==="assistant"?"GOLD-e AI":"System"}{m.provider&&<span className="provider-badge">{m.provider} {m.model?`(${m.model})`:""}</span>}</div><div className="playground-message-body">{m.content}</div>{m.role==="assistant"&&<button className="mini-copy" onClick={()=>copyText(m.content)}>{copied?<Check size={12}/>:<Copy size={12}/>}Copy</button>}</div>)}
               {busy&&<div className="playground-message assistant"><div className="playground-message-role">GOLD-e AI</div><div className="thinking-dots">Thinking…</div></div>}
             </div>
             <div className="playground-composer"><textarea value={prompt} onChange={e=>setPrompt(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();runText();}}} placeholder="Tell GOLD-e what you want to create…"/><button className="command-btn compact" onClick={()=>runText()} disabled={busy||!prompt.trim()}><Send size={15}/>Create</button></div>

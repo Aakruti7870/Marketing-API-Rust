@@ -321,98 +321,41 @@ pub async fn chat(
         "SELECT * FROM ai_agent_messages WHERE conversation_id=$1 ORDER BY created_at DESC LIMIT 20"
     ).bind(conversation_id).fetch_all(pool).await?;
 
-    let api_key = config.ai_api_key.clone().ok_or_else(|| {
-        AppError::BadRequest("AI provider is not configured. Set AI_API_KEY on the backend.".into())
-    })?;
-    let base_url = config.ai_api_base_url.trim_end_matches('/');
-    let model = config.ai_model.clone();
+    let agent_provider = agent
+        .settings
+        .get("provider")
+        .and_then(Value::as_str)
+        .map(str::to_string);
+    let agent_model = agent
+        .settings
+        .get("model")
+        .and_then(Value::as_str)
+        .map(str::to_string);
 
-    let mut input = Vec::new();
+    let mut chat_messages = Vec::new();
     for msg in history.iter().rev() {
         if msg.role == "user" || msg.role == "assistant" {
-            input.push(json!({
-                "role": msg.role,
-                "content": msg.content
-            }));
+            chat_messages.push(crate::services::ai_service::AiChatMessage {
+                role: msg.role.clone(),
+                content: msg.content.clone(),
+            });
         }
     }
 
-    let messages: Vec<Value> = input.to_vec();
-    let mut messages = messages;
-    messages.insert(
-        0,
-        json!({
-            "role": "system",
-            "content": agent.system_prompt
-        }),
-    );
+    let completion = crate::services::ai_service::generate_completion(
+        config,
+        &crate::services::ai_service::AiCompletionOptions {
+            provider: agent_provider,
+            model: agent_model,
+            system_prompt: Some(agent.system_prompt),
+            messages: chat_messages,
+            temperature: Some(config.ai_temperature),
+            max_tokens: Some(2048),
+        },
+    )
+    .await?;
 
-    let body = json!({
-        "model": model,
-        "messages": messages,
-    });
-
-    let response = Client::new()
-        .post(format!("{}/chat/completions", base_url))
-        .bearer_auth(api_key)
-        .json(&body)
-        .send()
-        .await
-        .map_err(|e| AppError::ExternalService(format!("AI provider request failed: {}", e)))?;
-
-    let status = response.status();
-    let content_type = response
-        .headers()
-        .get(reqwest::header::CONTENT_TYPE)
-        .and_then(|v| v.to_str().ok())
-        .unwrap_or("")
-        .to_string();
-    let raw_body = response.text().await.map_err(|e| {
-        AppError::ExternalService(format!(
-            "Failed reading AI provider response (HTTP {}): {}",
-            status, e
-        ))
-    })?;
-
-    let payload: Value = serde_json::from_str(&raw_body).map_err(|e| {
-        let preview: String = raw_body.chars().take(1000).collect();
-        AppError::ExternalService(format!(
-            "Invalid AI provider response (HTTP {}, content-type {}): {} | body: {}",
-            status, content_type, e, preview
-        ))
-    })?;
-
-    if !status.is_success() {
-        let message = payload
-            .get("error")
-            .and_then(|e| e.get("message"))
-            .and_then(Value::as_str)
-            .or_else(|| payload.get("message").and_then(Value::as_str))
-            .unwrap_or("AI provider returned an error");
-        let preview: String = raw_body.chars().take(2000).collect();
-        tracing::error!(
-            "AI provider request failed: HTTP {} model={} base_url={} message={} body={}",
-            status,
-            model,
-            base_url,
-            message,
-            preview
-        );
-        return Err(AppError::ExternalService(format!(
-            "HTTP {}: {}",
-            status, message
-        )));
-    }
-
-    let reply = payload
-        .get("choices")
-        .and_then(Value::as_array)
-        .and_then(|choices| choices.first())
-        .and_then(|choice| choice.get("message"))
-        .and_then(|message| message.get("content"))
-        .and_then(Value::as_str)
-        .map(str::to_string)
-        .ok_or_else(|| AppError::ExternalService("AI provider returned no text output".into()))?;
+    let reply = completion.text;
 
     sqlx::query(
         "INSERT INTO ai_agent_messages (conversation_id,role,content) VALUES ($1,'assistant',$2)",
@@ -430,7 +373,7 @@ pub async fn chat(
         conversation_id,
         agent_id,
         reply,
-        model: config.ai_model.clone(),
+        model: completion.model,
     })
 }
 

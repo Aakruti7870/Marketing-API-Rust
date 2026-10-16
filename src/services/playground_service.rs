@@ -78,55 +78,34 @@ async fn chat_generate(
     kind: &str,
     prompt: &str,
     context: &str,
-) -> Result<String, AppError> {
-    let api_key = config.ai_api_key.clone().ok_or_else(|| {
-        AppError::BadRequest("AI provider is not configured. Set AI_API_KEY on the backend.".into())
-    })?;
-    let body = json!({
-        "model": config.ai_model,
-        "messages": [
-            {"role":"system","content":system_prompt(kind)},
-            {"role":"user","content":format!("Business context:\n{}\n\nRequest:\n{}", context, prompt)}
-        ],
-        "temperature": 0.35
-    });
-    let response = Client::new()
-        .post(format!(
-            "{}/chat/completions",
-            config.ai_api_base_url.trim_end_matches('/')
-        ))
-        .bearer_auth(api_key)
-        .json(&body)
-        .send()
-        .await
-        .map_err(|e| AppError::ExternalService(format!("Playground AI request failed: {}", e)))?;
-    let status = response.status();
-    let raw = response
-        .text()
-        .await
-        .map_err(|e| AppError::ExternalService(format!("Unable to read AI response: {}", e)))?;
-    let payload: Value = serde_json::from_str(&raw)
-        .map_err(|_| AppError::ExternalService(format!("Invalid AI response (HTTP {})", status)))?;
-    if !status.is_success() {
-        let msg = payload
-            .get("error")
-            .and_then(|e| e.get("message"))
-            .and_then(Value::as_str)
-            .unwrap_or("AI provider error");
-        return Err(AppError::ExternalService(format!(
-            "HTTP {}: {}",
-            status, msg
-        )));
-    }
-    payload
-        .get("choices")
-        .and_then(Value::as_array)
-        .and_then(|a| a.first())
-        .and_then(|c| c.get("message"))
-        .and_then(|m| m.get("content"))
-        .and_then(Value::as_str)
-        .map(str::to_string)
-        .ok_or_else(|| AppError::ExternalService("AI provider returned no text output".into()))
+    provider: Option<&str>,
+    model: Option<&str>,
+) -> Result<crate::services::ai_service::AiCompletionResult, AppError> {
+    let options = crate::services::ai_service::AiCompletionOptions {
+        provider: provider.map(str::to_string),
+        model: model.map(str::to_string),
+        system_prompt: Some(system_prompt(kind).to_string()),
+        messages: vec![crate::services::ai_service::AiChatMessage {
+            role: "user".to_string(),
+            content: format!("Business context:\n{}\n\nRequest:\n{}", context, prompt),
+        }],
+        temperature: Some(0.35),
+        max_tokens: Some(2048),
+    };
+    crate::services::ai_service::generate_completion(config, &options).await
+}
+
+pub fn list_providers(config: &Config) -> Vec<crate::services::ai_service::AiProviderInfo> {
+    crate::services::ai_service::get_provider_catalog(config)
+}
+
+#[derive(Debug, Clone)]
+pub struct GenerateTextParams<'a> {
+    pub kind: &'a str,
+    pub prompt: &'a str,
+    pub context: &'a str,
+    pub provider: Option<&'a str>,
+    pub model: Option<&'a str>,
 }
 
 pub async fn generate_text(
@@ -134,12 +113,19 @@ pub async fn generate_text(
     pool: &PgPool,
     workspace_id: Uuid,
     user_id: Uuid,
-    kind: &str,
-    prompt: &str,
-    context: &str,
+    params: GenerateTextParams<'_>,
 ) -> Result<Value, AppError> {
-    let kind = validate_kind(kind)?;
-    let raw_content = chat_generate(config, &kind, prompt, context).await?;
+    let kind = validate_kind(params.kind)?;
+    let completion = chat_generate(
+        config,
+        &kind,
+        params.prompt,
+        params.context,
+        params.provider,
+        params.model,
+    )
+    .await?;
+    let raw_content = completion.text;
     let id = Uuid::new_v4();
 
     let (content, metadata) = if kind == "SMART_WHATSAPP" {
@@ -211,7 +197,7 @@ pub async fn generate_text(
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8)"
     )
     .bind(id).bind(workspace_id).bind(&kind).bind(format!("{} draft", kind.replace('_', " ")))
-    .bind(prompt).bind(&content).bind(&metadata).bind(user_id)
+    .bind(params.prompt).bind(&content).bind(&metadata).bind(user_id)
     .execute(pool).await?;
 
     if kind == "SMART_WHATSAPP" {
@@ -231,7 +217,16 @@ pub async fn generate_text(
         }
     }
 
-    Ok(json!({"id":id,"kind":kind,"content":content,"metadata":metadata}))
+    Ok(json!({
+        "id": id,
+        "kind": kind,
+        "content": content,
+        "metadata": metadata,
+        "provider": completion.provider,
+        "model": completion.model,
+        "prompt_tokens": completion.prompt_tokens,
+        "completion_tokens": completion.completion_tokens,
+    }))
 }
 
 pub async fn generate_image(

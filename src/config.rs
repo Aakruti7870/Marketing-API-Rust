@@ -26,6 +26,10 @@ pub struct Config {
     pub ai_model: String,
     pub ai_image_model: String,
     pub ai_temperature: f32,
+    pub ai_provider: String,
+    pub anthropic_api_key: Option<String>,
+    pub anthropic_base_url: String,
+    pub ollama_base_url: Option<String>,
     pub public_base_url: String,
     pub channel_encryption_key: Option<String>,
     pub resend_api_key: Option<String>,
@@ -165,6 +169,17 @@ impl Config {
             .ok()
             .and_then(|v| v.parse::<f32>().ok())
             .unwrap_or(0.2);
+        let ai_provider = env::var("AI_PROVIDER")
+            .unwrap_or_else(|_| "openai".to_string())
+            .to_lowercase();
+        let anthropic_api_key = env::var("ANTHROPIC_API_KEY")
+            .ok()
+            .filter(|v| !v.trim().is_empty());
+        let anthropic_base_url = env::var("ANTHROPIC_BASE_URL")
+            .unwrap_or_else(|_| "https://api.anthropic.com/v1".to_string());
+        let ollama_base_url = env::var("OLLAMA_BASE_URL")
+            .ok()
+            .filter(|v| !v.trim().is_empty() && v.trim() != "disabled");
         let public_base_url =
             env::var("PUBLIC_BASE_URL").unwrap_or_else(|_| "https://api.goldetech.com".to_string());
         let channel_encryption_key = env::var("CHANNEL_ENCRYPTION_KEY").ok();
@@ -200,6 +215,10 @@ impl Config {
             ai_model,
             ai_image_model,
             ai_temperature,
+            ai_provider,
+            anthropic_api_key,
+            anthropic_base_url,
+            ollama_base_url,
             public_base_url,
             channel_encryption_key,
             resend_api_key,
