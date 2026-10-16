@@ -141,7 +141,7 @@ pub fn get_provider_catalog(config: &Config) -> Vec<AiProviderInfo> {
         AiProviderInfo {
             id: "ollama".to_string(),
             name: "Ollama (Self-hosted / Local)".to_string(),
-            configured: true,
+            configured: config.ollama_base_url.is_some(),
             default_model: "llama3".to_string(),
             models: vec![
                 "llama3".to_string(),
@@ -468,7 +468,15 @@ async fn call_ollama(
     messages: &[AiChatMessage],
     temperature: f32,
 ) -> Result<AiCompletionResult, AppError> {
-    let base_url = config.ollama_base_url.trim_end_matches('/');
+    let base_url = config
+        .ollama_base_url
+        .as_deref()
+        .ok_or_else(|| {
+            AppError::BadRequest(
+                "Ollama provider is not configured. Set OLLAMA_BASE_URL on the backend.".into(),
+            )
+        })?
+        .trim_end_matches('/');
     let body = build_ollama_payload(model, system_prompt, messages, temperature);
 
     let response = client

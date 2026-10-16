@@ -199,7 +199,7 @@ function Playground() {
             >
               {providers.map(p=>(
                 <option key={p.id} value={p.id}>
-                  {p.name}{!p.configured && p.id !== "ollama" ? " (Needs Key)" : ""}
+                  {p.name}{!p.configured ? (p.id === "ollama" ? " (Needs Endpoint)" : " (Needs Key)") : ""}
                 </option>
               ))}
             </select>

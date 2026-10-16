@@ -29,7 +29,7 @@ pub struct Config {
     pub ai_provider: String,
     pub anthropic_api_key: Option<String>,
     pub anthropic_base_url: String,
-    pub ollama_base_url: String,
+    pub ollama_base_url: Option<String>,
     pub public_base_url: String,
     pub channel_encryption_key: Option<String>,
     pub resend_api_key: Option<String>,
@@ -177,8 +177,9 @@ impl Config {
             .filter(|v| !v.trim().is_empty());
         let anthropic_base_url = env::var("ANTHROPIC_BASE_URL")
             .unwrap_or_else(|_| "https://api.anthropic.com/v1".to_string());
-        let ollama_base_url =
-            env::var("OLLAMA_BASE_URL").unwrap_or_else(|_| "http://localhost:11434".to_string());
+        let ollama_base_url = env::var("OLLAMA_BASE_URL")
+            .ok()
+            .filter(|v| !v.trim().is_empty() && v.trim() != "disabled");
         let public_base_url =
             env::var("PUBLIC_BASE_URL").unwrap_or_else(|_| "https://api.goldetech.com".to_string());
         let channel_encryption_key = env::var("CHANNEL_ENCRYPTION_KEY").ok();

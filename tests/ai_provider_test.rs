@@ -113,12 +113,12 @@ fn test_ollama_chat_request_structure() {
         "llama3.2",
         Some("You are an email marketing AI"),
         &messages,
-        0.3,
+        0.5,
     );
 
     assert_eq!(payload["model"], "llama3.2");
     assert_eq!(payload["stream"], false);
-    assert_eq!(payload["options"]["temperature"], 0.3);
+    assert_eq!(payload["options"]["temperature"], 0.5);
 
     let msgs = payload["messages"].as_array().expect("messages array");
     assert_eq!(msgs.len(), 2);
@@ -274,7 +274,7 @@ fn test_provider_catalog_returns_all_providers() {
     assert!(ids.contains(&"ollama"));
 
     let ollama_info = catalog.iter().find(|p| p.id == "ollama").unwrap();
-    assert!(ollama_info.configured);
+    assert_eq!(ollama_info.configured, config.ollama_base_url.is_some());
     assert!(ollama_info.models.contains(&"llama3".to_string()));
 }
 
@@ -332,6 +332,36 @@ async fn test_missing_anthropic_api_key_fails_closed_without_simulation() {
         AppError::BadRequest(msg) => {
             assert!(msg.contains("Anthropic provider is not configured"));
             assert!(msg.contains("ANTHROPIC_API_KEY"));
+        }
+        _ => panic!("Expected BadRequest error variant"),
+    }
+}
+
+#[tokio::test]
+async fn test_missing_ollama_base_url_fails_closed() {
+    let mut config = Config::from_env().unwrap();
+    config.ollama_base_url = None;
+
+    let options = AiCompletionOptions {
+        provider: Some("ollama".to_string()),
+        model: Some("llama3".to_string()),
+        system_prompt: None,
+        messages: vec![AiChatMessage {
+            role: "user".to_string(),
+            content: "Hello".to_string(),
+        }],
+        temperature: Some(0.2),
+        max_tokens: Some(100),
+    };
+
+    let err = generate_completion(&config, &options)
+        .await
+        .expect_err("Missing Ollama endpoint must fail immediately");
+
+    match err {
+        AppError::BadRequest(msg) => {
+            assert!(msg.contains("Ollama provider is not configured"));
+            assert!(msg.contains("OLLAMA_BASE_URL"));
         }
         _ => panic!("Expected BadRequest error variant"),
     }
