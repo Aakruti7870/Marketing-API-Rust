@@ -84,11 +84,13 @@ async fn generate(
             &state.pool,
             tenant.workspace_id,
             tenant.user_id,
-            &dto.kind,
-            &dto.prompt,
-            dto.business_context.as_deref().unwrap_or(""),
-            dto.provider.as_deref(),
-            dto.model.as_deref(),
+            playground_service::GenerateTextParams {
+                kind: &dto.kind,
+                prompt: &dto.prompt,
+                context: dto.business_context.as_deref().unwrap_or(""),
+                provider: dto.provider.as_deref(),
+                model: dto.model.as_deref(),
+            },
         )
         .await?,
         "Playground content generated",

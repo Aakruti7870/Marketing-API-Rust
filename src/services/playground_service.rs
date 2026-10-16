@@ -99,19 +99,32 @@ pub fn list_providers(config: &Config) -> Vec<crate::services::ai_service::AiPro
     crate::services::ai_service::get_provider_catalog(config)
 }
 
+#[derive(Debug, Clone)]
+pub struct GenerateTextParams<'a> {
+    pub kind: &'a str,
+    pub prompt: &'a str,
+    pub context: &'a str,
+    pub provider: Option<&'a str>,
+    pub model: Option<&'a str>,
+}
+
 pub async fn generate_text(
     config: &Config,
     pool: &PgPool,
     workspace_id: Uuid,
     user_id: Uuid,
-    kind: &str,
-    prompt: &str,
-    context: &str,
-    provider: Option<&str>,
-    model: Option<&str>,
+    params: GenerateTextParams<'_>,
 ) -> Result<Value, AppError> {
-    let kind = validate_kind(kind)?;
-    let completion = chat_generate(config, &kind, prompt, context, provider, model).await?;
+    let kind = validate_kind(params.kind)?;
+    let completion = chat_generate(
+        config,
+        &kind,
+        params.prompt,
+        params.context,
+        params.provider,
+        params.model,
+    )
+    .await?;
     let raw_content = completion.text;
     let id = Uuid::new_v4();
 
