@@ -122,10 +122,10 @@ pub fn get_provider_catalog(config: &Config) -> Vec<AiProviderInfo> {
     let mut openai_models = vec![config.ai_model.clone()];
     let candidate_models: &[&str] = if is_gemini {
         &[
-            "gemini-2.5-flash",
-            "gemini-2.0-flash",
-            "gemini-1.5-flash",
-            "gemini-1.5-pro",
+            "gemini-3.8-flash",
+            "gemini-3.5-flash",
+            "gemini-3.1-pro",
+            "gemini-2.5-pro",
         ]
     } else {
         &["gpt-5.6-luna", "gpt-4o", "gpt-4o-mini"]
@@ -650,10 +650,10 @@ async fn call_openai(
     let mut candidate_models = vec![model];
     if is_gemini {
         for fallback in &[
-            "gemini-1.5-flash",
-            "gemini-2.0-flash",
-            "gemini-2.5-flash",
-            "gemini-1.5-pro",
+            "gemini-3.8-flash",
+            "gemini-3.5-flash",
+            "gemini-3.1-pro",
+            "gemini-2.5-pro",
         ] {
             if !candidate_models.contains(fallback) {
                 candidate_models.push(fallback);
@@ -667,7 +667,7 @@ async fn call_openai(
         }
     }
 
-    let mut last_error = None;
+    let mut attempt_errors: Vec<(String, String)> = Vec::new();
     for &candidate in &candidate_models {
         let body = build_openai_payload(candidate, system_prompt, messages, temperature);
 
@@ -685,10 +685,7 @@ async fn call_openai(
                     candidate,
                     e
                 );
-                last_error = Some(AppError::ExternalService(format!(
-                    "OpenAI request failed: {}",
-                    e
-                )));
+                attempt_errors.push((candidate.to_string(), format!("HTTP send error: {}", e)));
                 continue;
             }
         };
@@ -702,10 +699,7 @@ async fn call_openai(
                     candidate,
                     e
                 );
-                last_error = Some(AppError::ExternalService(format!(
-                    "Failed reading OpenAI response: {}",
-                    e
-                )));
+                attempt_errors.push((candidate.to_string(), format!("Response read error: {}", e)));
                 continue;
             }
         };
@@ -717,12 +711,19 @@ async fn call_openai(
                 candidate,
                 raw
             );
+            let parsed_err = parse_openai_response(status, &raw, candidate).err();
+            let err_msg = parsed_err
+                .map(|e| e.to_string())
+                .unwrap_or_else(|| format!("HTTP {} {}", status, raw));
+            attempt_errors.push((candidate.to_string(), err_msg));
+
             if status == reqwest::StatusCode::TOO_MANY_REQUESTS
                 || status == reqwest::StatusCode::SERVICE_UNAVAILABLE
                 || status == reqwest::StatusCode::NOT_FOUND
             {
-                last_error = parse_openai_response(status, &raw, candidate).err();
                 continue;
+            } else {
+                return parse_openai_response(status, &raw, candidate);
             }
         }
 
@@ -738,17 +739,21 @@ async fn call_openai(
                 return Ok(result);
             }
             Err(err) => {
-                last_error = Some(err);
+                attempt_errors.push((candidate.to_string(), err.to_string()));
             }
         }
     }
 
-    Err(last_error.unwrap_or_else(|| {
-        AppError::ExternalService(format!(
-            "All candidate models failed for provider: {}",
-            model
-        ))
-    }))
+    let summary = attempt_errors
+        .iter()
+        .map(|(c, e)| format!("[{}]: {}", c, e))
+        .collect::<Vec<_>>()
+        .join("; ");
+
+    Err(AppError::ExternalService(format!(
+        "AI provider request failed for model {}. Attempt details: {}",
+        model, summary
+    )))
 }
 
 #[cfg(test)]

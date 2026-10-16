@@ -234,7 +234,7 @@ fn default_ai_model(base_url: &str) -> &'static str {
         .to_ascii_lowercase()
         .contains("generativelanguage.googleapis.com")
     {
-        "gemini-2.0-flash"
+        "gemini-3.8-flash"
     } else {
         "gpt-5.6-luna"
     }
@@ -259,7 +259,7 @@ mod ai_model_tests {
     fn uses_gemini_models_for_gemini_compatibility_endpoint() {
         assert_eq!(
             default_ai_model("https://generativelanguage.googleapis.com/v1beta/openai"),
-            "gemini-2.0-flash"
+            "gemini-3.8-flash"
         );
         assert_eq!(
             default_ai_image_model("https://generativelanguage.googleapis.com/v1beta/openai"),
