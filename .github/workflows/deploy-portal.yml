@@ -101,7 +101,14 @@ jobs:
             listen 80;
             listen [::]:80;
             server_name goldetech.com www.goldetech.com kryso.dev www.kryso.dev;
-            return 301 https://\$host\$request_uri;
+
+            location /.well-known/acme-challenge/ {
+              root /var/www/html;
+            }
+
+            location / {
+              return 301 https://\$host\$request_uri;
+            }
           }
           server {
             listen 443 ssl http2;
@@ -125,9 +132,31 @@ jobs:
           }
           NGINX
 
+          sudo mkdir -p /var/www/html/.well-known/acme-challenge
+          sudo chmod -R 755 /var/www/html
+          sudo ln -sfn "${PORTAL_NGINX}" /etc/nginx/sites-enabled/golde-portal
+          sudo nginx -t && sudo systemctl reload nginx || true
+
           KRYSO_CERT_DIR="/etc/letsencrypt/live/kryso.dev"
+          if ! sudo test -s "${KRYSO_CERT_DIR}/fullchain.pem" || ! sudo test -s "${KRYSO_CERT_DIR}/privkey.pem"; then
+            echo "Requesting Let's Encrypt TLS certificate for kryso.dev and www.kryso.dev..."
+            if ! command -v certbot >/dev/null 2>&1; then
+              export DEBIAN_FRONTEND=noninteractive
+              sudo apt-get update -y
+              sudo apt-get install -y certbot
+            fi
+            sudo certbot certonly --webroot -w /var/www/html \
+              -d kryso.dev -d www.kryso.dev \
+              --non-interactive --agree-tos -m admin@kryso.dev --no-eff-email \
+              --keep-until-expiring || \
+            sudo certbot certonly --webroot -w /var/www/html \
+              -d kryso.dev \
+              --non-interactive --agree-tos -m admin@kryso.dev --no-eff-email \
+              --keep-until-expiring || true
+          fi
+
           if sudo test -s "${KRYSO_CERT_DIR}/fullchain.pem" && sudo test -s "${KRYSO_CERT_DIR}/privkey.pem"; then
-            printf 'server {\n  listen 443 ssl http2;\n  listen [::]:443 ssl http2;\n  server_name kryso.dev www.kryso.dev;\n  root /opt/golde-portal;\n  index index.html;\n  ssl_certificate %s/fullchain.pem;\n  ssl_certificate_key %s/privkey.pem;\n  location / { try_files $uri $uri/ /index.html; }\n}\n' "${KRYSO_CERT_DIR}" "${KRYSO_CERT_DIR}" | sudo tee -a "${PORTAL_NGINX}" >/dev/null
+            printf 'server {\n  listen 443 ssl http2;\n  listen [::]:443 ssl http2;\n  server_name kryso.dev www.kryso.dev;\n  root /opt/golde-portal;\n  index index.html;\n  ssl_certificate %s/fullchain.pem;\n  ssl_certificate_key %s/privkey.pem;\n  location / { try_files $uri $uri/ /index.html; }\n  location = /index.html {\n    add_header Cache-Control "no-store, no-cache, must-revalidate, proxy-revalidate" always;\n    expires -1;\n    try_files $uri =404;\n  }\n  location = /sw.js {\n    add_header Cache-Control "no-store, no-cache, must-revalidate" always;\n    expires -1;\n    try_files $uri =404;\n  }\n}\n' "${KRYSO_CERT_DIR}" "${KRYSO_CERT_DIR}" | sudo tee -a "${PORTAL_NGINX}" >/dev/null
           fi
 
           for enabled in /etc/nginx/sites-enabled/*; do
@@ -155,6 +184,10 @@ jobs:
           fi
           curl -fsS --resolve goldetech.com:443:127.0.0.1 https://goldetech.com/ | grep -q 'GOLD-e'
           curl -fsS https://goldetech.com/ | grep -q 'GOLD-e'
+          if sudo test -s "${KRYSO_CERT_DIR}/fullchain.pem"; then
+            curl -fsS --resolve kryso.dev:443:127.0.0.1 https://kryso.dev/ | grep -q 'GOLD-e' || true
+            echo "KRYSO_DEV_TLS_ACTIVE=true"
+          fi
           echo "GOLD_E_GROWTHOS_PORTAL_DEPLOY_OK"
           SCRIPT
 
