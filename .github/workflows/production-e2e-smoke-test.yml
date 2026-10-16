@@ -143,9 +143,14 @@ jobs:
             -d "$(jq -n --arg p "${OVERSIZED_PROMPT}" '{"kind":"WHATSAPP_TEMPLATE","prompt":$p,"provider":"openai"}')" \
             "${BASE_URL}/api/v1/playground/generate" || true)"
 
-          test "${HTTP_CODE_SAFEGUARD}" = "400"
+          # Accept 422 (UNPROCESSABLE_ENTITY from AppError::Validation) or 400
+          if [[ "${HTTP_CODE_SAFEGUARD}" != "422" && "${HTTP_CODE_SAFEGUARD}" != "400" ]]; then
+            echo "::error::Expected 422 or 400 validation error, got HTTP ${HTTP_CODE_SAFEGUARD}"
+            cat /tmp/safeguard-res.json
+            exit 1
+          fi
           grep -q "exceeds maximum allowed safeguard" /tmp/safeguard-res.json
-          echo "Prompt length safeguard PASSED (HTTP 400 rejection)."
+          echo "Prompt length safeguard PASSED (HTTP ${HTTP_CODE_SAFEGUARD} rejection)."
 
       - name: Verify Core Modules Live Endpoints & Tenant Isolation
         shell: bash
