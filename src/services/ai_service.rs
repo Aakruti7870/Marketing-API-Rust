@@ -114,18 +114,20 @@ pub struct AiProviderInfo {
 }
 
 pub fn get_provider_catalog(config: &Config) -> Vec<AiProviderInfo> {
+    let mut openai_models = vec![config.ai_model.clone()];
+    for m in &["gpt-5.6-luna", "gpt-4o", "gpt-4o-mini"] {
+        if !openai_models.contains(&m.to_string()) {
+            openai_models.push(m.to_string());
+        }
+    }
+
     vec![
         AiProviderInfo {
             id: "openai".to_string(),
             name: "OpenAI / Compatible".to_string(),
             configured: config.ai_api_key.is_some(),
             default_model: config.ai_model.clone(),
-            models: vec![
-                config.ai_model.clone(),
-                "gpt-5.6-luna".to_string(),
-                "gpt-4o".to_string(),
-                "gpt-4o-mini".to_string(),
-            ],
+            models: openai_models,
         },
         AiProviderInfo {
             id: "anthropic".to_string(),

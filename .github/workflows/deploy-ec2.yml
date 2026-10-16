@@ -361,7 +361,7 @@ jobs:
           log "Backup directory: ${BACKUP_DIR}"
           log "Database backup: database.predeploy.${TS}.dump"
           log "--- Recent Service Journal Logs ---"
-          journalctl -u "$SERVICE" -n 80 --no-pager || true
+          journalctl -u "$SERVICE" --since "1 hour ago" -n 200 --no-pager || true
           REMOTE_SCRIPT
 
           sed -i "s/__GITHUB_SHA__/${GITHUB_SHA}/g" /tmp/activate-backend.sh
