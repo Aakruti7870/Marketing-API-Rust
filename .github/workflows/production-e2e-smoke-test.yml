@@ -101,20 +101,23 @@ jobs:
             echo "::error::Sensitive credential pattern detected in public providers response!"
             exit 1
           fi
-          echo "AI Provider Catalog verified: active provider detected and secrets protected."
+          echo "AI Provider Catalog verified: active provider detected and secrets protected:"
+          cat providers.json
 
       - name: Execute Live Production AI Generation and Verify Persistence
         shell: bash
         run: |
           set -euo pipefail
+          ACTIVE_MODEL="$(jq -r '.data[] | select(.id == "openai") | .default_model' providers.json)"
+          echo "Active default model for OpenAI generation: ${ACTIVE_MODEL}"
           HTTP_CODE=""
           for attempt in $(seq 1 4); do
-            echo "Attempt $attempt: generating AI content..."
+            echo "Attempt $attempt: generating AI content with model ${ACTIVE_MODEL}..."
             HTTP_CODE="$(curl -s -o ai-generate.json -w "%{http_code}" \
               -H "Authorization: Bearer ${ACCESS_TOKEN}" \
               -H "x-workspace-id: ${WORKSPACE_ID}" \
               -H "Content-Type: application/json" \
-              -d '{"kind":"WHATSAPP_TEMPLATE","prompt":"Special festive offer for valued customers","provider":"openai"}' \
+              -d "$(jq -n --arg m "${ACTIVE_MODEL}" '{"kind":"WHATSAPP_TEMPLATE","prompt":"Special festive offer for valued customers","provider":"openai","model":$m}')" \
               "${BASE_URL}/api/v1/playground/generate")"
             if [ "$HTTP_CODE" = "200" ]; then
               break

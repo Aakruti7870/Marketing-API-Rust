@@ -63,7 +63,10 @@ impl IntoResponse for AppError {
             AppError::NotFound(msg) => (StatusCode::NOT_FOUND, msg.clone()),
             AppError::Conflict(msg) => (StatusCode::CONFLICT, msg.clone()),
             AppError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg.clone()),
-            AppError::ExternalService(msg) => (StatusCode::BAD_GATEWAY, msg.clone()),
+            AppError::ExternalService(msg) => {
+                tracing::error!("External service error: {}", msg);
+                (StatusCode::BAD_GATEWAY, msg.clone())
+            }
             AppError::Internal(err) => {
                 tracing::error!("Internal server error: {:?}", err);
                 (
